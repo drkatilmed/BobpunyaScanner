@@ -1,0 +1,2674 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>A4 Scanner Pro - Powered by jscanify & CamScanner Magic Color</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="A4 Scanner">
+    <meta name="theme-color" content="#09090b">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jsPDF untuk jana fail PDF standard A4 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- JSZip untuk mampatan fail ZIP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+<!-- ENJIN COMPUTER VISION: OpenCV.js & jscanify -->
+    <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();"></script>
+    <script src="https://cdn.jsdelivr.net/gh/ColonelParrot/jscanify@master/src/jscanify.min.js"></script>
+
+<style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #09090b;
+            color: #ffffff;
+            touch-action: pan-y;
+            overflow-x: hidden;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            min-height: 100dvh;
+        }
+        .a4-sheet {
+            width: 100%;
+            max-width: 440px;
+            aspect-ratio: 1 / 1.4142;
+            background: #ffffff;
+            color: #1c1c1e;
+            box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.65);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+        @media (min-width: 768px) {
+            .a4-sheet {
+                max-width: 480px;
+            }
+        }
+        .android-glass-nav {
+            background: rgba(18, 18, 20, 0.92);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 0.5px solid rgba(255, 255, 255, 0.12);
+        }
+        .android-glass-bottom {
+            background: rgba(18, 18, 20, 0.94);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-top: 0.5px solid rgba(255, 255, 255, 0.12);
+            padding-bottom: max(env(safe-area-inset-bottom), 12px);
+        }
+        .capsule-pill {
+            background: rgba(39, 39, 42, 0.90);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 0.5px solid rgba(255, 255, 255, 0.16);
+        }
+        #cropCanvasWrapper {
+            touch-action: none;
+        }
+        .pwa-scanner-frame {
+            position: absolute;
+            width: 82%;
+            height: 74%;
+            border: 2px dashed rgba(255, 170, 0, 0.85);
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+            pointer-events: none;
+            border-radius: 12px;
+        }
+        .pwa-btn-capture {
+            width: 76px;
+            height: 76px;
+            border-radius: 50%;
+            border: 5px solid #ffffff;
+            background: #10b981;
+            cursor: pointer;
+            box-shadow: 0 4px 18px rgba(16, 185, 129, 0.5);
+            transition: transform 0.1s ease;
+        }
+        .pwa-btn-capture:active {
+            transform: scale(0.92);
+        }
+
+/* SAFE AREA KHAS UNTUK HOMESCREEN / PWA iOS */
+        .ios-pwa-top-bar {
+            padding-top: max(env(safe-area-inset-top), 24px) !important;
+            padding-bottom: 12px !important;
+        }
+        .ios-pwa-bottom-bar {
+            padding-bottom: max(env(safe-area-inset-bottom), 24px) !important;
+            padding-top: 14px !important;
+        }
+        #pwaCameraModal {
+            height: 100dvh;
+            width: 100vw;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+<!-- BAR NAVIGASI ATAS -->
+    <header class="sticky top-0 z-40 android-glass-nav pt-2 pb-2.5 px-3 sm:px-4">
+        <div class="flex items-center justify-between text-[11px] text-zinc-400 font-medium px-2 pb-1.5 opacity-80 max-w-2xl mx-auto">
+            <span id="deviceClock">09:41</span>
+            <div class="flex items-center gap-2">
+                <span id="cvEngineStatus" class="flex items-center gap-1 text-amber-400 font-semibold text-[10px]">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    <span>Memuatkan jscanify...</span>
+                </span>
+                <i data-lucide="wifi" class="w-3.5 h-3.5 text-zinc-300"></i>
+                <i data-lucide="battery-charging" class="w-4 h-4 text-emerald-400"></i>
+            </div>
+        </div>
+
+<div class="flex items-center justify-between max-w-2xl mx-auto gap-2">
+            <button type="button" onclick="toggleHistoryDrawer()" class="px-2.5 sm:px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-200 hover:text-white flex items-center gap-1.5 text-xs font-medium border border-zinc-700/60 active:scale-95 transition">
+                <i data-lucide="folder-kanban" class="w-4 h-4 text-emerald-400"></i>
+                <span class="hidden sm:inline">Fail Simpanan</span>
+                <span class="sm:hidden">Fail</span>
+                <span id="savedCountBadge" class="bg-emerald-600 text-[10px] font-bold text-white px-1.5 py-0.2 rounded-full">0</span>
+            </button>
+
+<div class="flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-full hover:bg-zinc-800/80 transition max-w-[140px] sm:max-w-xs" onclick="renameDocument()">
+                <span id="docTitleLabel" class="text-xs sm:text-sm font-semibold text-white tracking-tight truncate">Dokumen_Imbasan_1</span>
+                <i data-lucide="pencil" class="w-3 h-3 text-zinc-400 flex-shrink-0"></i>
+            </div>
+
+<div class="flex items-center gap-1.5">
+                <button type="button" onclick="saveAndGeneratePDF(true)" class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-semibold text-xs px-3 sm:px-4 py-1.5 rounded-full flex items-center gap-1.5 shadow-md shadow-emerald-900/40 transition">
+                    <i data-lucide="file-check" class="w-3.5 h-3.5"></i>
+                    <span>Simpan PDF</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+<!-- KAWASAN KANDUNGAN UTAMA -->
+    <main class="flex-grow flex flex-col items-center justify-start py-3 px-3 max-w-2xl mx-auto w-full relative">
+
+<!-- KAPSUL PENUNJUK MUKA SURAT (M/S 1, M/S 2, M/S 3) -->
+        <div class="sticky top-16 z-30 mb-3 capsule-pill text-zinc-200 text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-full flex items-center gap-2 sm:gap-3 shadow-lg overflow-x-auto max-w-full">
+            <button type="button" onclick="switchPage(1)" id="tabBtn1" class="flex items-center gap-1 text-white font-bold transition whitespace-nowrap">
+                <i data-lucide="file-text" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>M/S 1</span>
+            </button>
+            <span class="text-zinc-500 font-light">|</span>
+            <button type="button" onclick="switchPage(2)" id="tabBtn2" class="flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap">
+                <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                <span>M/S 2 (Foto 1-4)</span>
+            </button>
+            <span class="text-zinc-500 font-light">|</span>
+            <button type="button" onclick="switchPage(3)" id="tabBtn3" class="flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap">
+                <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                <span>M/S 3 (Foto 5-8)</span>
+            </button>
+        </div>
+
+<!-- MUKA SURAT 1: DOKUMEN KERTAS A4 UTAMA -->
+        <section id="pageView1" class="w-full flex flex-col items-center">
+            <div class="w-full max-w-[440px] sm:max-w-[480px] flex items-center justify-between mb-2 px-1">
+                <!-- Pilihan Penapis Magic Color -->
+                <div class="flex items-center gap-1 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 text-xs">
+                    <button type="button" onclick="setDocFilter('magic')" id="f-magic" class="px-2.5 py-1 rounded-lg text-white font-medium bg-emerald-600 flex items-center gap-1 shadow-sm">
+                        <i data-lucide="sparkles" class="w-3 h-3 text-amber-300"></i>
+                        <span>Magic Color</span>
+                    </button>
+                    <button type="button" onclick="setDocFilter('normal')" id="f-normal" class="px-2.5 py-1 rounded-lg text-zinc-400 hover:text-white">Asal</button>
+                    <button type="button" onclick="setDocFilter('bw')" id="f-bw" class="px-2.5 py-1 rounded-lg text-zinc-400 hover:text-white">B&W</button>
+                </div>
+
+<div class="flex items-center gap-1.5">
+                    <button type="button" onclick="openManualCropModal()" title="Laras Bucu Kertas" class="p-2 bg-zinc-900 text-zinc-300 hover:text-emerald-400 rounded-xl border border-zinc-800 active:scale-90 transition flex items-center gap-1 text-xs font-semibold px-2.5">
+                        <i data-lucide="crop" class="w-4 h-4 text-emerald-400"></i>
+                        <span class="hidden sm:inline">Crop</span>
+                    </button>
+                    <button type="button" onclick="rotateDocImage()" title="Pusing 90°" class="p-2 bg-zinc-900 text-zinc-300 hover:text-white rounded-xl border border-zinc-800 active:scale-90 transition">
+                        <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                    </button>
+                    <button type="button" onclick="openPWACamera(1)" title="Buka Kamera Auto-Crop" class="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl active:scale-90 transition shadow-sm flex items-center justify-center">
+                        <i data-lucide="scan" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+<!-- Kad Kertas A4 (Halaman 1) -->
+            <div class="a4-sheet p-0 flex flex-col justify-between overflow-hidden shadow-2xl relative">
+                <!-- Keadaan Kosong -->
+                <div id="docEmptyState" class="w-full h-full border-2 border-dashed border-emerald-400/40 rounded-xl flex flex-col items-center justify-center p-6 text-center text-zinc-400 bg-emerald-50/10">
+                    <div class="w-16 h-16 rounded-2xl bg-emerald-950/90 border border-emerald-700/60 text-emerald-400 flex items-center justify-center mb-3 shadow-sm">
+                        <i data-lucide="scan-line" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-zinc-800">Pengimbas Dokumen Kertas A4</h3>
+                    <p class="text-xs text-zinc-500 mt-1 max-w-[280px]">Auto-Crop Pintar & CamScanner Magic Color: Meluruskan perspektif kertas, membuang bayang gelap, dan memutihkan latar.</p>
+
+<div class="mt-4 flex flex-col gap-2 w-full max-w-xs">
+                        <button type="button" onclick="openPWACamera(1)" class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
+                            <i data-lucide="scan" class="w-4 h-4"></i>
+                            <span>Buka Kamera Langsung (Auto-Crop)</span>
+                        </button>
+
+<div class="flex gap-2 w-full">
+                            <label for="docCameraInputDirect" class="flex-1 py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer">
+                                <i data-lucide="camera" class="w-4 h-4 text-emerald-400"></i>
+                                <span>Kamera Sistem</span>
+                                <input type="file" id="docCameraInputDirect" accept="image/*" capture="environment" class="hidden" onchange="handleDocUpload(event)">
+                            </label>
+                            <label for="docGalleryInput" class="flex-1 py-2.5 px-3 bg-zinc-200 hover:bg-zinc-300 active:scale-95 text-zinc-800 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition">
+                                <i data-lucide="image" class="w-4 h-4"></i>
+                                <span>Galeri</span>
+                                <input type="file" id="docGalleryInput" accept="image/*" class="hidden" onchange="handleDocUpload(event)">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+<!-- Paparan Dokumen A4 Penuh Sebenar -->
+                <div id="docPreviewWrapper" class="hidden w-full h-full relative group bg-white overflow-hidden flex items-center justify-center">
+                    <img id="docImage" src="" alt="Dokumen A4" class="w-full h-full object-fill bg-white">
+
+<div class="absolute bottom-3 right-3 flex items-center gap-2 bg-black/85 backdrop-blur-md px-3 py-1.5 rounded-full z-10 shadow-lg border border-zinc-700/60">
+                        <button type="button" onclick="openManualCropModal()" title="Laras Bucu Kertas" class="text-zinc-200 hover:text-emerald-400 p-1">
+                            <i data-lucide="crop" class="w-4 h-4"></i>
+                        </button>
+                        <button type="button" onclick="rotateDocImage()" title="Pusing 90°" class="text-zinc-200 hover:text-emerald-400 p-1">
+                            <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                        </button>
+                        <button type="button" onclick="openPWACamera(1)" title="Imbas Semula Kamera Langsung" class="text-emerald-400 hover:text-emerald-300 p-1">
+                            <i data-lucide="scan" class="w-4 h-4"></i>
+                        </button>
+                        <button type="button" onclick="removeDocImage()" title="Padam" class="text-red-400 hover:text-red-300 p-1">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+<p class="text-[11px] text-zinc-400 mt-2.5 text-center max-w-sm">
+                Enjin pengesanan sudut berarah geometrik membetulkan perspektif senget secara automatik tanpa menyebabkan imej terherot.
+            </p>
+        </section>
+
+<!-- MUKA SURAT 2: SUSUNAN GRID 4 FOTO LAMPIRAN (FOTO 1-4) -->
+        <section id="pageView2" class="w-full flex flex-col items-center hidden">
+            <div class="w-full max-w-[440px] sm:max-w-[480px] flex items-center justify-between mb-2 px-1">
+                <span class="text-xs font-semibold text-zinc-400">Susunan Grid 4 Lampiran (Halaman 2)</span>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="autoRotateAllPhotos(2)" title="Betulkan Semua Putaran M/S 2" class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-medium bg-zinc-900 py-1 px-2.5 rounded-lg border border-zinc-800 active:scale-95 transition">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        <span>Tegakkan Semua</span>
+                    </button>
+                </div>
+            </div>
+
+<div class="a4-sheet p-3 sm:p-4 flex flex-col justify-between">
+                <div class="border-b border-zinc-300 pb-2 mb-2 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xs font-bold text-zinc-800 tracking-wide uppercase">LAMPIRAN BERGAMBAR (BAHAGIAN 1)</h2>
+                    </div>
+                    <div class="text-[10px] text-zinc-500 font-medium" id="headerDateDisplay">
+                        Tarikh Dokumen: --/--/----
+                    </div>
+                </div>
+
+<div class="grid grid-cols-2 grid-rows-2 gap-2 sm:gap-2.5 flex-grow w-full h-[88%]">
+                    <!-- Slot Foto 0 hingga 3 -->
+                    <div id="card-slot-0" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(2, 0)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-0" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-0" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 1</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 1</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-0" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 0)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 0)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-0" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 0)">
+                        <input type="file" id="file-gallery-0" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 0)">
+                    </div>
+
+<div id="card-slot-1" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(2, 1)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-1" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-1" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 2</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 2</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-1" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 1)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 1)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-1" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 1)">
+                        <input type="file" id="file-gallery-1" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 1)">
+                    </div>
+
+<div id="card-slot-2" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(2, 2)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-2" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-2" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 3</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 3</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-2" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 2)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 2)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-2" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 2)">
+                        <input type="file" id="file-gallery-2" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 2)">
+                    </div>
+
+<div id="card-slot-3" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(2, 3)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-3" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-3" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 4</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 4</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-3" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 3)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 3)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-3" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 3)">
+                        <input type="file" id="file-gallery-3" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 3)">
+                    </div>
+                </div>
+
+<div class="text-[8px] text-zinc-400 text-center pt-2 border-t border-zinc-100">
+                    Halaman Lampiran 1 • A4 Scanner Pro
+                </div>
+            </div>
+
+<p class="text-[11px] text-zinc-400 mt-2.5 text-center">Tekan butang <i data-lucide="rotate-cw" class="inline w-3 h-3 text-zinc-300"></i> pada foto untuk menegakkan gambar yang senget.</p>
+        </section>
+
+<!-- MUKA SURAT 3: SUSUNAN GRID 4 FOTO LAMPIRAN TAMBAHAN (FOTO 5-8) -->
+        <section id="pageView3" class="w-full flex flex-col items-center hidden">
+            <div class="w-full max-w-[440px] sm:max-w-[480px] flex items-center justify-between mb-2 px-1">
+                <span class="text-xs font-semibold text-zinc-400">Susunan Grid 4 Lampiran (Halaman 3)</span>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="autoRotateAllPhotos(3)" title="Betulkan Semua Putaran M/S 3" class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-medium bg-zinc-900 py-1 px-2.5 rounded-lg border border-zinc-800 active:scale-95 transition">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        <span>Tegakkan Semua</span>
+                    </button>
+                </div>
+            </div>
+
+<div class="a4-sheet p-3 sm:p-4 flex flex-col justify-between">
+                <div class="border-b border-zinc-300 pb-2 mb-2 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xs font-bold text-zinc-800 tracking-wide uppercase">LAMPIRAN BERGAMBAR (BAHAGIAN 2)</h2>
+                    </div>
+                    <div class="text-[10px] text-zinc-500 font-medium" id="headerDateDisplay3">
+                        Tarikh Dokumen: --/--/----
+                    </div>
+                </div>
+
+<div class="grid grid-cols-2 grid-rows-2 gap-2 sm:gap-2.5 flex-grow w-full h-[88%]">
+                    <!-- Slot Foto 4 hingga 7 (Foto 5 hingga 8) -->
+                    <div id="card-slot-4" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(3, 4)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-4" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-4" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 5</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 5</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-4" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 4)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 4)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-4" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 4)">
+                        <input type="file" id="file-gallery-4" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 4)">
+                    </div>
+
+<div id="card-slot-5" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(3, 5)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-5" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-5" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 6</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 6</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-5" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 5)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 5)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-5" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 5)">
+                        <input type="file" id="file-gallery-5" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 5)">
+                    </div>
+
+<div id="card-slot-6" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(3, 6)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-6" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-6" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 7</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 7</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-6" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 6)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 6)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-4" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 6)">
+                        <input type="file" id="file-gallery-6" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 6)">
+                    </div>
+
+<div id="card-slot-7" class="relative bg-zinc-50 border border-zinc-200 rounded-lg overflow-hidden flex flex-col justify-between p-1.5 transition shadow-sm">
+                        <div onclick="openPWACamera(3, 7)" class="w-full flex-grow relative overflow-hidden rounded flex items-center justify-center bg-zinc-100/80 cursor-pointer">
+                            <img id="photo-img-7" class="hidden w-full h-full object-contain transition-transform duration-150">
+                            <div id="photo-empty-7" class="flex flex-col items-center text-zinc-400">
+                                <i data-lucide="camera" class="w-6 h-6 text-zinc-400 mb-1"></i>
+                                <span class="text-[10px] font-semibold text-zinc-600">Ambil Foto 8</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 px-0.5">
+                            <span class="text-[9px] font-medium text-zinc-500">Foto 8</span>
+                            <div class="flex items-center gap-1">
+                                <label for="file-gallery-7" title="Pilih dari Galeri" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90 cursor-pointer">
+                                    <i data-lucide="image" class="w-3 h-3"></i>
+                                </label>
+                                <button type="button" onclick="rotateSinglePhoto(event, 7)" title="Pusingkan Foto" class="p-1 rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 active:scale-90">
+                                    <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                                </button>
+                                <button type="button" onclick="removeSinglePhoto(event, 7)" title="Padam" class="p-1 rounded bg-zinc-200 hover:bg-red-100 text-zinc-700 hover:text-red-600 active:scale-90">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="camera-input-7" accept="image/*" capture="environment" class="hidden" onchange="handleSinglePhotoFile(event, 7)">
+                        <input type="file" id="file-gallery-7" accept="image/*" class="hidden" onchange="handleSinglePhotoFile(event, 7)">
+                    </div>
+                </div>
+
+<div class="text-[8px] text-zinc-400 text-center pt-2 border-t border-zinc-100">
+                    Halaman Lampiran 2 • A4 Scanner Pro
+                </div>
+            </div>
+
+<p class="text-[11px] text-zinc-400 mt-2.5 text-center">Muka surat 3 hanya akan dijana ke dalam fail PDF jika anda mengisi sekurang-kurangnya satu foto di atas.</p>
+        </section>
+    </main>
+
+<!-- BAR TINDAKAN BAWAH -->
+    <footer class="sticky bottom-0 z-40 android-glass-bottom py-2.5 px-6">
+        <div class="max-w-2xl mx-auto flex items-center justify-between text-zinc-300">
+            <button type="button" onclick="document.getElementById('hiddenGlobalPicker').click()" class="flex flex-col items-center gap-1 hover:text-white transition active:scale-95">
+                <i data-lucide="image-plus" class="w-5 h-5 text-zinc-300"></i>
+                <span class="text-[10px]">Import</span>
+                <input type="file" id="hiddenGlobalPicker" accept="image/*" class="hidden" onchange="handleGlobalImport(event)">
+            </button>
+
+<button type="button" onclick="triggerPrimaryScanAction()" class="flex flex-col items-center -mt-6 active:scale-95 transition">
+                <div class="w-14 h-14 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/50 border-4 border-zinc-950">
+                    <i data-lucide="scan" class="w-7 h-7"></i>
+                </div>
+                <span class="text-[10px] mt-1 text-emerald-400 font-bold" id="bottomScanBtnLabel">Kamera A4</span>
+            </button>
+
+<button type="button" onclick="saveAndGeneratePDF(true)" class="flex flex-col items-center gap-1 hover:text-white transition active:scale-95">
+                <i data-lucide="file-check" class="w-5 h-5 text-emerald-400"></i>
+                <span class="text-[10px] text-emerald-400 font-semibold">Simpan PDF</span>
+            </button>
+        </div>
+    </footer>
+
+<!-- MODAL: PEMIDANG TILIK KAMERA LANGSUNG jscanify (DIKEMAS KINI DENGAN IOS SAFE-AREA) -->
+    <div id="pwaCameraModal" class="fixed inset-0 z-50 bg-[#111111] hidden flex-col justify-between overflow-hidden">
+        <!-- BAR ATAS: DIJAMIN TURUN DI BAWAH DYNAMIC ISLAND / NOTCH -->
+        <div class="ios-pwa-top-bar px-4 bg-zinc-900/95 backdrop-blur-md flex items-center justify-between z-30 border-b border-zinc-800 shrink-0">
+            <button type="button" onclick="closePWACamera()" class="px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 shadow active:scale-95 transition">
+                <i data-lucide="x" class="w-4 h-4"></i>
+                <span>Tutup</span>
+            </button>
+            <div class="text-[11px] sm:text-xs font-bold text-amber-400 tracking-wider uppercase flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                <span id="pwaCameraTargetLabel">Pengimbas Auto-Crop (A4)</span>
+            </div>
+            <button type="button" onclick="togglePWACameraFacing()" title="Pusing Kamera" class="p-2 rounded-full bg-zinc-800 text-zinc-200 hover:text-white shadow active:scale-95 transition">
+                <i data-lucide="switch-camera" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+<!-- KAWASAN VIDEO KAMERA LANGSUNG -->
+        <div class="relative flex-grow w-full max-w-[500px] mx-auto flex items-center justify-center overflow-hidden bg-black">
+            <!-- iOS Safari / WebKit Standalone PWA Friendly Video Element -->
+            <video id="pwaWebcam" autoplay playsinline webkit-playsinline muted class="w-full h-full object-cover"></video>
+            <canvas id="pwaHighlightCanvas" class="absolute inset-0 w-full h-full object-cover pointer-events-none"></canvas>
+            <div class="pwa-scanner-frame flex items-center justify-center">
+                <span class="text-[11px] text-amber-300 font-medium bg-black/60 px-2.5 py-1 rounded-full pointer-events-none text-center max-w-[85%]">
+                    Halakan pada kertas putih di atas latar rata
+                </span>
+            </div>
+        </div>
+
+<canvas id="pwaHiddenCanvas" style="display:none;"></canvas>
+
+<!-- BAR BAWAH DENGAN SHUTTER BUTTON: DIJAMIN BEBAS DARIPADA HOME INDICATOR BAR -->
+        <div class="ios-pwa-bottom-bar px-5 bg-[#222222] flex items-center justify-center z-30 border-t border-zinc-800 shrink-0">
+            <button type="button" class="pwa-btn-capture" id="pwaCaptureBtn" onclick="handlePWACapture()" title="Imbas & Ekstrak Kertas"></button>
+        </div>
+    </div>
+
+<!-- DRAWER: FAIL & FOLDER SIMPANAN -->
+    <div id="historyDrawerModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-end justify-center transition-all" onclick="toggleHistoryDrawer()">
+        <div class="w-full max-w-2xl bg-zinc-900 border-t border-zinc-700/80 rounded-t-3xl max-h-[85vh] flex flex-col p-4 shadow-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="folder-kanban" class="w-5 h-5 text-emerald-400"></i>
+                    <h3 class="text-sm font-bold text-white">Fail & Folder Simpanan</h3>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" onclick="createNewFolderPrompt()" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 active:scale-95 transition shadow-sm" title="Cipta Folder Baru">
+                        <i data-lucide="folder-plus" class="w-3.5 h-3.5"></i>
+                        <span>Folder</span>
+                    </button>
+                    <button type="button" onclick="compressAllToZip()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 active:scale-95 transition shadow-sm" title="Mampatkan semua ke fail ZIP">
+                        <i data-lucide="archive" class="w-3.5 h-3.5"></i>
+                        <span>ZIP</span>
+                    </button>
+                    <button type="button" onclick="createNewEmptyDocument()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                        <span>Baru</span>
+                    </button>
+                    <button type="button" onclick="toggleHistoryDrawer()" class="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+<div class="flex items-center justify-between py-2 px-1 text-xs border-b border-zinc-800 bg-zinc-950/60 rounded-lg mt-2">
+                <div id="folderBreadcrumb" class="flex items-center gap-1 overflow-x-auto text-zinc-400 text-[11px] font-medium whitespace-nowrap py-0.5"></div>
+                <div id="currentFolderAction" class="flex items-center gap-1 pl-2 flex-shrink-0"></div>
+            </div>
+
+<div id="savedDocsListContainer" class="flex-grow overflow-y-auto py-3 space-y-2.5 max-h-[58vh]"></div>
+        </div>
+    </div>
+
+<!-- MODAL ALIH DOKUMEN KE FOLDER -->
+    <div id="moveDocModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4" onclick="closeMoveModal()">
+        <div class="w-full max-w-sm bg-zinc-900 border border-zinc-700/80 rounded-2xl p-4 shadow-2xl flex flex-col" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between pb-2 border-b border-zinc-800">
+                <h4 class="text-xs font-bold text-white flex items-center gap-1.5">
+                    <i data-lucide="folder-input" class="w-4 h-4 text-emerald-400"></i>
+                    <span>Alih Dokumen ke Folder</span>
+                </h4>
+                <button type="button" onclick="closeMoveModal()" class="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+            <p class="text-[11px] text-zinc-400 mt-2 mb-3">Pilih folder destinasi untuk fail PDF ini:</p>
+            <div id="folderSelectList" class="space-y-1.5 max-h-56 overflow-y-auto mb-3"></div>
+            <div class="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button type="button" onclick="closeMoveModal()" class="px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 rounded-lg">Batal</button>
+            </div>
+        </div>
+    </div>
+
+<!-- MODAL PELARASAN BUCU KERTAS SECARA MANUAL (CROP) -->
+    <div id="manualCropModal" class="fixed inset-0 z-50 bg-black/95 hidden flex-col justify-between">
+        <div class="px-3 sm:px-4 py-3 flex items-center justify-between bg-zinc-900 border-b border-zinc-800 text-white z-20">
+            <button type="button" onclick="closeManualCropModal()" class="text-zinc-400 hover:text-white text-xs font-semibold px-2 py-1">Batal</button>
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <button type="button" onclick="resetCropToFull()" class="px-2 sm:px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-lg border border-zinc-700">Penuh</button>
+                <button type="button" onclick="autoDetectAndSetCorners()" class="px-2 sm:px-2.5 py-1 bg-amber-950 border border-amber-600/80 text-amber-400 text-xs font-medium rounded-lg">Auto Bucu</button>
+                <button type="button" onclick="applyManualCrop()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow flex items-center gap-1">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                    <span>Guna</span>
+                </button>
+            </div>
+        </div>
+        <div class="relative flex-grow flex items-center justify-center overflow-hidden p-2 select-none" id="cropCanvasWrapper">
+            <canvas id="cropCanvas" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl"></canvas>
+        </div>
+        <div class="p-3 bg-zinc-900 text-center text-[11px] text-zinc-400 border-t border-zinc-800 flex items-center justify-between px-4 sm:px-6">
+            <span>Tarik 4 pin bulat ke sempadan kertas dokumen.</span>
+            <button type="button" onclick="resetCropToFull()" class="text-emerald-400 underline font-medium">Guna Saiz Asal</button>
+        </div>
+    </div>
+
+<!-- MODAL PENJANAAN PDF PROGRESS -->
+    <div id="loadingModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center">
+        <div class="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl flex flex-col items-center max-w-xs text-center shadow-2xl">
+            <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <h4 class="text-white text-base font-bold">Sedang Menjana Fail PDF...</h4>
+            <p class="text-zinc-400 text-xs mt-1" id="pdfProgressDesc">Menyusun halaman dokumen standard A4.</p>
+        </div>
+    </div>
+
+<!-- TOAST NOTIFIKASI -->
+    <div id="toastNotification" class="fixed top-4 inset-x-4 max-w-xs mx-auto z-50 bg-zinc-900/95 border border-zinc-700/80 shadow-2xl rounded-full py-2.5 px-4 flex items-center gap-2.5 text-xs text-white transform -translate-y-24 opacity-0 transition-all duration-300 pointer-events-none">
+        <i id="toastIcon" data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+        <span id="toastMessage" class="truncate font-medium">Operasi berjaya</span>
+    </div>
+
+<!-- LOGIK JAVASCRIPT LENGKAP -->
+    <script>
+        // 1. KEADAAN SISTEM
+        let currentActivePage = 1;
+        let currentDocTitle = "Dokumen_Imbasan_1";
+        let currentDateStr = "";
+
+        // Halaman 1 (Dokumen Kertas A4)
+        let uncroppedOriginalSrc = null;
+        let originalRawDocSrc = null;
+        let docImageSrc = null;
+        let docRotation = 0;
+        let docFilter = 'magic';
+        let manualCorners = null;
+        let cropImageInstance = null;
+
+        // Halaman 2 (Foto 1-4) & Halaman 3 (Foto 5-8) - Jumlah 8 Slot Foto
+        let photos = [null, null, null, null, null, null, null, null];
+        let photoRotations = [0, 0, 0, 0, 0, 0, 0, 0];
+        let savedDocuments = [];
+
+        // Sistem Pengurusan Folder Hierarki Bersarang
+        let savedFolders = [];
+        let currentFolderId = null;
+        let docToMoveId = null;
+
+        // Keadaan Kamera Langsung
+        let pwaCameraStream = null;
+        let pwaTargetPage = 1;
+        let pwaTargetSlot = 0;
+        let pwaFacingMode = "environment";
+        let liveHighlightInterval = null;
+        let isCvProcessingFrame = false;
+
+        let scanner = null;
+        let isOpenCvLoaded = false;
+
+        const DB_NAME = "A4ScannerProDB";
+        const STORE_NAME = "saved_documents";
+        const FOLDER_STORE_NAME = "saved_folders";
+        const DB_VERSION = 2;
+
+        function onOpenCvReady() {
+            try {
+                if (window.jscanify) {
+                    scanner = new jscanify();
+                    isOpenCvLoaded = true;
+                    const statusEl = document.getElementById('cvEngineStatus');
+                    if (statusEl) {
+                        statusEl.className = "flex items-center gap-1 text-emerald-400 font-semibold text-[10px]";
+                        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span><span>Auto-Crop Sedia</span>`;
+                    }
+                }
+            } catch (e) {
+                console.warn("Ralat memulakan jscanify:", e);
+            }
+        }
+
+        // =========================================================================
+        // 2. ENJIN KAMERA LANGSUNG DENGAN SOKONGAN KHAS HOMESCREEN / PWA iOS & ANDROID
+        // =========================================================================
+        async function openPWACamera(targetPage = 1, targetSlot = 0) {
+            pwaTargetPage = targetPage;
+            pwaTargetSlot = targetSlot;
+
+            const modal = document.getElementById('pwaCameraModal');
+            const video = document.getElementById('pwaWebcam');
+            const targetLabel = document.getElementById('pwaCameraTargetLabel');
+
+            if (targetLabel) {
+                if (targetPage === 1) {
+                    targetLabel.innerText = "Pengimbas Auto-Crop (A4)";
+                } else {
+                    targetLabel.innerText = `Ambil Foto ${targetSlot + 1}`;
+                }
+            }
+
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+
+            stopPWACamera();
+
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error("WebRTC kamera tidak disokong oleh pelayar ini.");
+                }
+
+                // KEKANGAN MESRA iOS HOMESCREEN PWA:
+                // Elakkan kekangan tetap seperti { width: 1280 } kerana WebKit PWA sering menolaknya
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+                let constraints = {
+                    video: {
+                        facingMode: { ideal: pwaFacingMode }
+                    },
+                    audio: false
+                };
+
+                // Jika bukan iOS, kita boleh mencadangkan resolusi ideal
+                if (!isIOS) {
+                    constraints.video.width = { ideal: 1280 };
+                    constraints.video.height = { ideal: 720 };
+                }
+
+                try {
+                    pwaCameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (firstErr) {
+                    console.warn("Cubaan pertama kamera gagal, mencuba fallback paling asas:", firstErr);
+                    // Fallback paling asas jika iOS Standalone PWA menolak kekangan
+                    pwaCameraStream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+                }
+
+                if (video && pwaCameraStream) {
+                    video.srcObject = pwaCameraStream;
+                    video.setAttribute('playsinline', '');
+                    video.setAttribute('webkit-playsinline', '');
+                    video.muted = true;
+                    
+                    await video.play();
+
+                    if (targetPage === 1) {
+                        startLiveHighlightLoop();
+                    }
+                }
+            } catch (err) {
+                console.error("Gagal akses kamera langsung: ", err);
+                showToast("Akses kamera terhad di Homescreen. Membuka kamera sistem...");
+                closePWACamera();
+                
+                // Beralih ke kamera sistem (yang tetap akan diproses oleh Auto-Crop & Magic Color)
+                if (targetPage === 1) {
+                    const fallbackInput = document.getElementById('docCameraInputDirect');
+                    if (fallbackInput) fallbackInput.click();
+                } else {
+                    const slotCam = document.getElementById(`camera-input-${targetSlot}`);
+                    if (slotCam) slotCam.click();
+                }
+            }
+        }
+
+        function startLiveHighlightLoop() {
+            stopLiveHighlightLoop();
+            const video = document.getElementById('pwaWebcam');
+            const hCanvas = document.getElementById('pwaHighlightCanvas');
+            if (!video || !hCanvas) return;
+
+            const tempWorkCanvas = document.createElement('canvas');
+            const workCtx = tempWorkCanvas.getContext('2d', { willReadFrequently: true });
+            const hCtx = hCanvas.getContext('2d');
+            isCvProcessingFrame = false;
+
+            liveHighlightInterval = setInterval(() => {
+                if (!isOpenCvLoaded || !scanner || video.paused || video.ended || video.videoWidth === 0) return;
+                if (isCvProcessingFrame) return;
+
+                isCvProcessingFrame = true;
+                try {
+                    const procW = 240;
+                    const procH = Math.round((video.videoHeight / video.videoWidth) * procW);
+                    tempWorkCanvas.width = procW;
+                    tempWorkCanvas.height = procH;
+                    workCtx.drawImage(video, 0, 0, procW, procH);
+
+                    const highlighted = scanner.highlightPaper(tempWorkCanvas);
+                    if (highlighted) {
+                        hCanvas.width = video.videoWidth;
+                        hCanvas.height = video.videoHeight;
+                        hCtx.clearRect(0, 0, hCanvas.width, hCanvas.height);
+                        hCtx.drawImage(highlighted, 0, 0, hCanvas.width, hCanvas.height);
+                    }
+                } catch (e) {
+                } finally {
+                    isCvProcessingFrame = false;
+                }
+            }, 250);
+        }
+
+        function stopLiveHighlightLoop() {
+            if (liveHighlightInterval) {
+                clearInterval(liveHighlightInterval);
+                liveHighlightInterval = null;
+            }
+            isCvProcessingFrame = false;
+            const hCanvas = document.getElementById('pwaHighlightCanvas');
+            if (hCanvas) {
+                const ctx = hCanvas.getContext('2d');
+                ctx.clearRect(0, 0, hCanvas.width, hCanvas.height);
+            }
+        }
+
+        function closePWACamera() {
+            stopLiveHighlightLoop();
+            stopPWACamera();
+            const modal = document.getElementById('pwaCameraModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function stopPWACamera() {
+            if (pwaCameraStream) {
+                pwaCameraStream.getTracks().forEach(track => {
+                    try { track.stop(); } catch (e) {}
+                });
+                pwaCameraStream = null;
+            }
+            const video = document.getElementById('pwaWebcam');
+            if (video) video.srcObject = null;
+        }
+
+        function togglePWACameraFacing() {
+            pwaFacingMode = pwaFacingMode === "environment" ? "user" : "environment";
+            openPWACamera(pwaTargetPage, pwaTargetSlot);
+        }
+
+        async function handlePWACapture() {
+            const video = document.getElementById('pwaWebcam');
+            const canvas = document.getElementById('pwaHiddenCanvas');
+            if (!video || !canvas || video.videoWidth === 0) {
+                showToast("Sila tunggu lensa kamera bersedia...");
+                return;
+            }
+
+            showToast("Mengekstrak imej & auto-crop...");
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const capturedData = canvas.toDataURL('image/jpeg', 0.95);
+            closePWACamera();
+
+            if (pwaTargetPage === 1) {
+                uncroppedOriginalSrc = capturedData;
+                originalRawDocSrc = capturedData;
+                docRotation = 0;
+                docFilter = 'magic';
+                manualCorners = null;
+
+                const tempImg = new Image();
+                tempImg.onload = async () => {
+                    const croppedData = extractPaperCleanly(tempImg);
+                    originalRawDocSrc = croppedData;
+                    await processAndDisplayDoc();
+                    switchPage(1);
+                    showToast("Dokumen berjaya diekstrak & dilaraskan!");
+                };
+                tempImg.src = capturedData;
+            } else {
+                photos[pwaTargetSlot] = capturedData;
+                photoRotations[pwaTargetSlot] = 0;
+                renderSingleSlot(pwaTargetSlot);
+                switchPage(pwaTargetPage);
+                showToast(`Foto ${pwaTargetSlot + 1} berjaya dirakam!`);
+            }
+        }
+
+        // =========================================================================
+        // 3. ENJIN PENGESANAN BUCU PINTAR & PEMBETULAN PERSPEKTIF A4
+        // =========================================================================
+        function sortCornersGeometrically(pts) {
+            if (!pts || pts.length !== 4) return pts;
+            const sortedBySum = [...pts].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+            const tl = sortedBySum[0];
+            const br = sortedBySum[3];
+
+            const sortedByDiff = [...pts].sort((a, b) => (a.y - a.x) - (b.y - b.x));
+            const tr = sortedByDiff[0];
+            const bl = sortedByDiff[3];
+
+            return [tl, tr, br, bl];
+        }
+
+        function detectPaperCornersWithOpenCV(img) {
+            const w = img.width || img.naturalWidth;
+            const h = img.height || img.naturalHeight;
+
+            const fallbackDefault = [
+                { x: Math.round(w * 0.04), y: Math.round(h * 0.04) },
+                { x: Math.round(w * 0.96), y: Math.round(h * 0.04) },
+                { x: Math.round(w * 0.96), y: Math.round(h * 0.96) },
+                { x: Math.round(w * 0.04), y: Math.round(h * 0.96) }
+            ];
+
+            if (isOpenCvLoaded && scanner && window.cv) {
+                try {
+                    const mat = cv.imread(img);
+                    const contour = scanner.findPaperContour(mat);
+                    mat.delete();
+
+                    if (contour) {
+                        const cornerPoints = scanner.getCornerPoints(contour, img);
+                        if (cornerPoints && cornerPoints.topLeftCorner && cornerPoints.topRightCorner && cornerPoints.bottomRightCorner && cornerPoints.bottomLeftCorner) {
+                            const rawPts = [
+                                { x: cornerPoints.topLeftCorner.x, y: cornerPoints.topLeftCorner.y },
+                                { x: cornerPoints.topRightCorner.x, y: cornerPoints.topRightCorner.y },
+                                { x: cornerPoints.bottomRightCorner.x, y: cornerPoints.bottomRightCorner.y },
+                                { x: cornerPoints.bottomLeftCorner.x, y: cornerPoints.bottomLeftCorner.y }
+                            ];
+
+                            const sorted = sortCornersGeometrically(rawPts);
+                            const polyW = Math.max(Math.hypot(sorted[1].x - sorted[0].x, sorted[1].y - sorted[0].y), Math.hypot(sorted[2].x - sorted[3].x, sorted[2].y - sorted[3].y));
+                            const polyH = Math.max(Math.hypot(sorted[3].x - sorted[0].x, sorted[3].y - sorted[0].y), Math.hypot(sorted[2].x - sorted[1].x, sorted[2].y - sorted[1].y));
+                            
+                            const minValidWidth = w * 0.35;
+                            const minValidHeight = h * 0.35;
+
+                            if (polyW >= minValidWidth && polyH >= minValidHeight) {
+                                return sorted;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Ralat findPaperContour:", e);
+                }
+            }
+
+            return fallbackDefault;
+        }
+
+        function extractPaperCleanly(imgElement) {
+            const rawCorners = detectPaperCornersWithOpenCV(imgElement);
+            const sortedCorners = sortCornersGeometrically(rawCorners);
+            return warpPerspectiveToA4Fallback(imgElement, sortedCorners);
+        }
+
+        function warpPerspectiveToA4Fallback(img, corners) {
+            const destW = 1240;
+            const destH = 1754;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = destW;
+            canvas.height = destH;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, destW, destH);
+
+            function renderTriangle(s0, s1, s2, d0, d1, d2) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(d0.x, d0.y);
+                ctx.lineTo(d1.x, d1.y);
+                ctx.lineTo(d2.x, d2.y);
+                ctx.closePath();
+                ctx.clip();
+
+                const denom = (s0.x * (s1.y - s2.y) + s1.x * (s2.y - s0.y) + s2.x * (s0.y - s1.y));
+                if (Math.abs(denom) > 0.0001) {
+                    const m11 = -(s0.y * (d1.x - d2.x) - s1.y * (d0.x - d2.x) + s2.y * (d0.x - d1.x)) / denom;
+                    const m12 = (s0.y * (d1.y - d2.y) - s1.y * (d0.y - d2.y) + s2.y * (d0.y - d1.y)) / denom;
+                    const m21 = (s0.x * (d1.x - d2.x) - s1.x * (d0.x - d2.x) + s2.x * (d0.x - d1.x)) / denom;
+                    const m22 = -(s0.x * (d1.y - d2.y) - s1.y * (d0.y - d2.y) + s2.x * (d0.y - d1.y)) / denom;
+                    const dx = (s0.x * (s1.y * d2.x - s2.y * d1.x) - s0.y * (s1.x * d2.x - s2.x * d1.x) + (s1.x * s2.y - s2.x * s1.y) * d0.x) / denom;
+                    const dy = (s0.x * (s1.y * d2.y - s2.y * d1.y) - s0.y * (s1.x * d2.x - s2.x * d1.x) + (s1.x * s2.y - s2.x * s1.y) * d0.y) / denom;
+
+                    ctx.transform(m11, m12, m21, m22, dx, dy);
+                    ctx.drawImage(img, 0, 0);
+                }
+                ctx.restore();
+            }
+
+            const p0 = corners[0];
+            const p1 = corners[1];
+            const p2 = corners[2];
+            const p3 = corners[3];
+
+            renderTriangle(p0, p1, p3, { x: 0, y: 0 }, { x: destW, y: 0 }, { x: 0, y: destH });
+            renderTriangle(p1, p2, p3, { x: destW, y: 0 }, { x: destW, y: destH }, { x: 0, y: destH });
+
+            return canvas.toDataURL('image/jpeg', 0.95);
+        }
+
+        // =========================================================================
+        // 4. CAMSCANNER MAGIC COLOR FILTER
+        // =========================================================================
+        function applyMagicColorFilterCamScanner(ctx, width, height) {
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const d = imgData.data;
+
+            const blockStep = 24; 
+            const gridW = Math.ceil(width / blockStep);
+            const gridH = Math.ceil(height / blockStep);
+            const bgGridR = new Float32Array(gridW * gridH);
+            const bgGridG = new Float32Array(gridW * gridH);
+            const bgGridB = new Float32Array(gridW * gridH);
+
+            for (let gy = 0; gy < gridH; gy++) {
+                const yStart = gy * blockStep;
+                const yEnd = Math.min(height, yStart + blockStep);
+                for (let gx = 0; gx < gridW; gx++) {
+                    const xStart = gx * blockStep;
+                    const xEnd = Math.min(width, xStart + blockStep);
+
+                    let maxR = 0, maxG = 0, maxB = 0;
+                    for (let y = yStart; y < yEnd; y += 2) {
+                        for (let x = xStart; x < xEnd; x += 2) {
+                            const idx = (y * width + x) * 4;
+                            if (d[idx] > maxR) maxR = d[idx];
+                            if (d[idx + 1] > maxG) maxG = d[idx + 1];
+                            if (d[idx + 2] > maxB) maxB = d[idx + 2];
+                        }
+                    }
+
+                    const gIdx = gy * gridW + gx;
+                    bgGridR[gIdx] = Math.max(90, maxR);
+                    bgGridG[gIdx] = Math.max(90, maxG);
+                    bgGridB[gIdx] = Math.max(90, maxB);
+                }
+            }
+
+            for (let y = 0; y < height; y++) {
+                const gy = Math.min(gridH - 1, Math.floor(y / blockStep));
+                for (let x = 0; x < width; x++) {
+                    const gx = Math.min(gridW - 1, Math.floor(x / blockStep));
+                    const gIdx = gy * gridW + gx;
+                    const idx = (y * width + x) * 4;
+
+                    const r = d[idx];
+                    const g = d[idx + 1];
+                    const b = d[idx + 2];
+
+                    let normR = (r / bgGridR[gIdx]) * 255;
+                    let normG = (g / bgGridG[gIdx]) * 255;
+                    let normB = (b / bgGridB[gIdx]) * 255;
+
+                    const maxC = Math.max(normR, normG, normB);
+                    const minC = Math.min(normR, normG, normB);
+                    const chroma = maxC - minC;
+                    const lum = 0.299 * normR + 0.587 * normG + 0.114 * normB;
+
+                    if (chroma > 18) {
+                        if (normB > normR + 10 && normB > normG + 5) {
+                            normB = Math.min(255, normB * 1.32);
+                            normR = Math.max(0, normR * 0.72);
+                            normG = Math.max(0, normG * 0.82);
+                        } else if (normR > normB + 15 && normR > normG + 10) {
+                            normR = Math.min(255, normR * 1.35);
+                            normG = Math.max(0, normG * 0.70);
+                            normB = Math.max(0, normB * 0.70);
+                        } else if (normG > normB + 12 && normR > normB + 8) {
+                            normG = Math.min(255, normG * 1.28);
+                        }
+                    } else {
+                        if (lum > 165) {
+                            normR = 255;
+                            normG = 255;
+                            normB = 255;
+                        } else if (lum < 100) {
+                            normR = Math.max(0, normR * 0.35);
+                            normG = Math.max(0, normG * 0.35);
+                            normB = Math.max(0, normB * 0.35);
+                        } else {
+                            const t = (lum - 100) / (165 - 100);
+                            const val = t * 255;
+                            normR = val; normG = val; normB = val;
+                        }
+                    }
+
+                    d[idx] = Math.min(255, Math.max(0, normR));
+                    d[idx + 1] = Math.min(255, Math.max(0, normG));
+                    d[idx + 2] = Math.min(255, Math.max(0, normB));
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+
+            try {
+                const sharpCanvas = document.createElement('canvas');
+                sharpCanvas.width = width;
+                sharpCanvas.height = height;
+                const sharpCtx = sharpCanvas.getContext('2d');
+                sharpCtx.filter = 'blur(1.2px)';
+                sharpCtx.drawImage(ctx.canvas, 0, 0);
+
+                const origData = ctx.getImageData(0, 0, width, height);
+                const blurData = sharpCtx.getImageData(0, 0, width, height);
+                const od = origData.data;
+                const bd = blurData.data;
+
+                for (let i = 0; i < od.length; i += 4) {
+                    od[i] = Math.min(255, Math.max(0, 1.4 * od[i] - 0.4 * bd[i]));
+                    od[i + 1] = Math.min(255, Math.max(0, 1.4 * od[i + 1] - 0.4 * bd[i + 1]));
+                    od[i + 2] = Math.min(255, Math.max(0, 1.4 * od[i + 2] - 0.4 * bd[i + 2]));
+                }
+                ctx.putImageData(origData, 0, 0);
+            } catch (errSharp) {
+                console.warn("Langkau unsharp mask:", errSharp);
+            }
+        }
+
+        // =========================================================================
+        // 5. ENJIN STORAN KEKAL (INDEXEDDB)
+        // =========================================================================
+        function openDatabase() {
+            return new Promise((resolve) => {
+                try {
+                    const indexedDBObj = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+                    if (!indexedDBObj) {
+                        resolve(null);
+                        return;
+                    }
+                    const request = indexedDBObj.open(DB_NAME, DB_VERSION);
+                    request.onupgradeneeded = function(e) {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            db.createObjectStore(STORE_NAME, { keyPath: "id" });
+                        }
+                        if (!db.objectStoreNames.contains(FOLDER_STORE_NAME)) {
+                            db.createObjectStore(FOLDER_STORE_NAME, { keyPath: "id" });
+                        }
+                    };
+                    request.onsuccess = function(e) {
+                        resolve(e.target.result);
+                    };
+                    request.onerror = function() {
+                        resolve(null);
+                    };
+                } catch (err) {
+                    console.warn("IndexedDB error:", err);
+                    resolve(null);
+                }
+            });
+        }
+
+        async function persistFolderToDB(folderObj) {
+            try {
+                const db = await openDatabase();
+                if (!db) return;
+                const tx = db.transaction([FOLDER_STORE_NAME], "readwrite");
+                const store = tx.objectStore(FOLDER_STORE_NAME);
+                store.put(folderObj);
+            } catch (err) {
+                console.warn("Gagal simpan folder:", err);
+            }
+        }
+
+        async function removeFolderFromDB(folderId) {
+            try {
+                const db = await openDatabase();
+                if (!db) return;
+                const tx = db.transaction([FOLDER_STORE_NAME], "readwrite");
+                const store = tx.objectStore(FOLDER_STORE_NAME);
+                store.delete(folderId);
+            } catch (err) {
+                console.warn("Gagal padam folder:", err);
+            }
+        }
+
+        async function loadPersistedFolders() {
+            try {
+                const db = await openDatabase();
+                if (!db) return;
+                const tx = db.transaction([FOLDER_STORE_NAME], "readonly");
+                const store = tx.objectStore(FOLDER_STORE_NAME);
+                const req = store.getAll();
+                return new Promise((resolve) => {
+                    req.onsuccess = function() {
+                        if (req.result && Array.isArray(req.result)) {
+                            savedFolders = req.result;
+                        }
+                        resolve(true);
+                    };
+                    req.onerror = () => resolve(false);
+                });
+            } catch (err) {
+                console.warn("Ralat membaca folder:", err);
+            }
+        }
+
+        async function persistDocumentToDB(docObj) {
+            try {
+                const db = await openDatabase();
+                if (!db) return;
+                const tx = db.transaction([STORE_NAME], "readwrite");
+                const store = tx.objectStore(STORE_NAME);
+                store.put(docObj);
+            } catch (err) {
+                console.warn("Gagal simpan dokumen:", err);
+            }
+        }
+
+        async function removeDocumentFromDB(id) {
+            try {
+                const db = await openDatabase();
+                if (!db) return;
+                const tx = db.transaction([STORE_NAME], "readwrite");
+                const store = tx.objectStore(STORE_NAME);
+                store.delete(id);
+            } catch (err) {
+                console.warn("Gagal padam dokumen:", err);
+            }
+        }
+
+        async function loadPersistedDocuments() {
+            try {
+                const db = await openDatabase();
+                if (!db) {
+                    updateSavedBadge();
+                    renderSavedDocsList();
+                    return;
+                }
+                const tx = db.transaction([STORE_NAME], "readonly");
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.getAll();
+                req.onsuccess = function() {
+                    if (req.result && Array.isArray(req.result) && req.result.length > 0) {
+                        savedDocuments = req.result.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                    }
+                    updateSavedBadge();
+                    renderSavedDocsList();
+                };
+            } catch (err) {
+                console.warn("Ralat membaca dokumen:", err);
+            }
+        }
+
+        // =========================================================================
+        // 6. INISIALISASI
+        // =========================================================================
+        window.addEventListener('DOMContentLoaded', async () => {
+            initClockAndDate();
+            renderDocUI();
+            for (let i = 0; i < 8; i++) {
+                renderSingleSlot(i);
+            }
+            await loadPersistedFolders();
+            await loadPersistedDocuments();
+            if (window.lucide) lucide.createIcons();
+        });
+
+        window.addEventListener('load', () => {
+            if (window.jscanify && !scanner) {
+                onOpenCvReady();
+            }
+        });
+
+        function initClockAndDate() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const clockEl = document.getElementById('deviceClock');
+            if (clockEl) clockEl.innerText = `${hours}:${minutes}`;
+
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            currentDateStr = `${day}/${month}/${year}`;
+
+            const hDate = document.getElementById('headerDateDisplay');
+            if (hDate) hDate.innerText = `Tarikh Dokumen: ${currentDateStr}`;
+            const hDate3 = document.getElementById('headerDateDisplay3');
+            if (hDate3) hDate3.innerText = `Tarikh Dokumen: ${currentDateStr}`;
+        }
+
+        // =========================================================================
+        // 7. MEMUAT NAIK & MEMPROSES DOKUMEN M/S 1 (TERMASUK KAMERA SISTEM DENGAN AUTO-CROP)
+        // =========================================================================
+        function handleDocUpload(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                showToast("Memproses imej & auto-crop...");
+                const rawData = e.target.result;
+                uncroppedOriginalSrc = rawData;
+                originalRawDocSrc = rawData;
+                docRotation = 0;
+                docFilter = 'magic';
+                manualCorners = null;
+
+                const tempImg = new Image();
+                tempImg.onload = async () => {
+                    const croppedData = extractPaperCleanly(tempImg);
+                    originalRawDocSrc = croppedData;
+                    await processAndDisplayDoc();
+                    showToast("Dokumen berjaya diekstrak & dilaraskan!");
+                };
+                tempImg.src = rawData;
+
+                event.target.value = '';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function processAndDisplayDoc() {
+            if (!originalRawDocSrc) return;
+            docImageSrc = await applyTransformationCanvas(originalRawDocSrc, docRotation, docFilter);
+            renderDocUI();
+        }
+
+        function renderDocUI() {
+            const emptyState = document.getElementById('docEmptyState');
+            const previewWrap = document.getElementById('docPreviewWrapper');
+            const docImg = document.getElementById('docImage');
+
+            if (docImageSrc) {
+                if (emptyState) emptyState.classList.add('hidden');
+                if (previewWrap) {
+                    previewWrap.classList.remove('hidden');
+                    previewWrap.classList.add('flex');
+                }
+                if (docImg) {
+                    docImg.src = docImageSrc;
+                    docImg.style.display = 'block';
+                }
+            } else {
+                if (emptyState) emptyState.classList.remove('hidden');
+                if (previewWrap) {
+                    previewWrap.classList.add('hidden');
+                    previewWrap.classList.remove('flex');
+                }
+                if (docImg) {
+                    docImg.src = '';
+                    docImg.style.display = 'none';
+                }
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        async function rotateDocImage() {
+            if (!originalRawDocSrc) {
+                showToast("Sila imbas dokumen terlebih dahulu.");
+                return;
+            }
+            docRotation = (docRotation + 90) % 360;
+            await processAndDisplayDoc();
+            showToast(`Dokumen dipusingkan ke ${docRotation}°`);
+        }
+
+        async function setDocFilter(mode) {
+            docFilter = mode;
+            ['normal', 'magic', 'bw'].forEach(f => {
+                const btn = document.getElementById(`f-${f}`);
+                if (btn) {
+                    if (f === mode) {
+                        btn.className = "px-2.5 py-1 rounded-lg text-white font-medium bg-emerald-600 flex items-center gap-1 shadow-sm";
+                    } else {
+                        btn.className = "px-2.5 py-1 rounded-lg text-zinc-400 hover:text-white flex items-center gap-1";
+                    }
+                }
+            });
+            if (originalRawDocSrc) {
+                await processAndDisplayDoc();
+            }
+        }
+
+        function removeDocImage() {
+            docImageSrc = null;
+            originalRawDocSrc = null;
+            uncroppedOriginalSrc = null;
+            docRotation = 0;
+            manualCorners = null;
+            renderDocUI();
+            showToast("Imej dokumen telah dipadam.");
+        }
+
+        function applyTransformationCanvas(src, rotationDegrees, filterType) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    if (rotationDegrees === 90 || rotationDegrees === 270) {
+                        canvas.width = img.height;
+                        canvas.height = img.width;
+                    } else {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                    }
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.save();
+                    ctx.translate(canvas.width / 2, canvas.height / 2);
+                    ctx.rotate((rotationDegrees * Math.PI) / 180);
+                    ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                    ctx.restore();
+
+                    if (filterType === 'normal') {
+                        resolve(canvas.toDataURL('image/jpeg', 0.95));
+                        return;
+                    }
+
+                    if (filterType === 'magic') {
+                        applyMagicColorFilterCamScanner(ctx, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.95));
+                        return;
+                    }
+
+                    if (filterType === 'bw') {
+                        const width = canvas.width;
+                        const height = canvas.height;
+                        const imgData = ctx.getImageData(0, 0, width, height);
+                        const d = imgData.data;
+                        for (let i = 0; i < d.length; i += 4) {
+                            const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                            const val = lum > 132 ? 255 : 0;
+                            d[i] = val; d[i + 1] = val; d[i + 2] = val;
+                        }
+                        ctx.putImageData(imgData, 0, 0);
+                        resolve(canvas.toDataURL('image/jpeg', 0.95));
+                    }
+                };
+                img.src = src;
+            });
+        }
+
+        // =========================================================================
+        // 8. MODAL MANUAL CROP CORNERS
+        // =========================================================================
+        function openManualCropModal() {
+            const sourceImage = uncroppedOriginalSrc || originalRawDocSrc;
+            if (!sourceImage) {
+                showToast("Sila imbas dokumen terlebih dahulu.");
+                return;
+            }
+
+            const modal = document.getElementById('manualCropModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            cropImageInstance = new Image();
+            cropImageInstance.onload = () => {
+                if (!manualCorners) {
+                    resetCropToFull();
+                }
+                drawCropCanvas();
+            };
+            cropImageInstance.src = sourceImage;
+            setupCropCanvasEvents();
+        }
+
+        function closeManualCropModal() {
+            const modal = document.getElementById('manualCropModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function resetCropToFull() {
+            if (!cropImageInstance) return;
+            const w = cropImageInstance.width;
+            const h = cropImageInstance.height;
+            manualCorners = [
+                { x: Math.round(w * 0.02), y: Math.round(h * 0.02) },
+                { x: Math.round(w * 0.98), y: Math.round(h * 0.02) },
+                { x: Math.round(w * 0.98), y: Math.round(h * 0.98) },
+                { x: Math.round(w * 0.02), y: Math.round(h * 0.98) }
+            ];
+            drawCropCanvas();
+            showToast("Bucu dilaras ke saiz penuh.");
+        }
+
+        function autoDetectAndSetCorners() {
+            if (!cropImageInstance) return;
+            showToast("Mengesan bucu dokumen...");
+            const raw = detectPaperCornersWithOpenCV(cropImageInstance);
+            manualCorners = sortCornersGeometrically(raw);
+            drawCropCanvas();
+        }
+
+        function drawCropCanvas() {
+            const canvas = document.getElementById('cropCanvas');
+            if (!canvas || !cropImageInstance) return;
+
+            const maxW = window.innerWidth * 0.94;
+            const maxH = window.innerHeight * 0.72;
+            const scale = Math.min(maxW / cropImageInstance.width, maxH / cropImageInstance.height, 1);
+
+            canvas.width = cropImageInstance.width * scale;
+            canvas.height = cropImageInstance.height * scale;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(cropImageInstance, 0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 3.5;
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.18)';
+
+            ctx.beginPath();
+            manualCorners.forEach((pt, i) => {
+                const x = pt.x * scale;
+                const y = pt.y * scale;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.closePath();
+            ctx.stroke();
+            ctx.fill();
+
+            const pinRadius = window.innerWidth >= 768 ? 20 : 16;
+            manualCorners.forEach((pt) => {
+                const x = pt.x * scale;
+                const y = pt.y * scale;
+                ctx.beginPath();
+                ctx.arc(x, y, pinRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#10b981';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x, y, pinRadius * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+            });
+        }
+
+        let activeCornerIndex = -1;
+        function setupCropCanvasEvents() {
+            const canvas = document.getElementById('cropCanvas');
+            if (!canvas || canvas.dataset.eventsAttached) return;
+            canvas.dataset.eventsAttached = "true";
+
+            function getTouchPos(e) {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const scale = canvas.width / cropImageInstance.width;
+                return {
+                    x: (clientX - rect.left) / scale,
+                    y: (clientY - rect.top) / scale
+                };
+            }
+
+            function handleStart(e) {
+                if (e.cancelable) e.preventDefault();
+                const pos = getTouchPos(e);
+                activeCornerIndex = -1;
+                let minDist = window.innerWidth >= 768 ? 60 : 45;
+                manualCorners.forEach((pt, idx) => {
+                    const dist = Math.hypot(pt.x - pos.x, pt.y - pos.y);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        activeCornerIndex = idx;
+                    }
+                });
+            }
+
+            function handleMove(e) {
+                if (activeCornerIndex === -1) return;
+                if (e.cancelable) e.preventDefault();
+                const pos = getTouchPos(e);
+                manualCorners[activeCornerIndex].x = Math.max(0, Math.min(cropImageInstance.width, pos.x));
+                manualCorners[activeCornerIndex].y = Math.max(0, Math.min(cropImageInstance.height, pos.y));
+                drawCropCanvas();
+            }
+
+            function handleEnd() {
+                activeCornerIndex = -1;
+            }
+
+            canvas.addEventListener('mousedown', handleStart);
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('mouseup', handleEnd);
+
+            canvas.addEventListener('touchstart', handleStart, { passive: false });
+            window.addEventListener('touchmove', handleMove, { passive: false });
+            window.addEventListener('touchend', handleEnd);
+            window.addEventListener('touchcancel', handleEnd);
+        }
+
+        async function applyManualCrop() {
+            if (!cropImageInstance || !manualCorners) return;
+            showToast("Mengekstrak dokumen...");
+            
+            const sorted = sortCornersGeometrically(manualCorners);
+            const resultData = warpPerspectiveToA4Fallback(cropImageInstance, sorted);
+
+            originalRawDocSrc = resultData;
+            await processAndDisplayDoc();
+            closeManualCropModal();
+            showToast("Dokumen berjaya dipotong!");
+        }
+
+        // =========================================================================
+        // 9. FOTO LAMPIRAN (SLOT 0..7)
+        // =========================================================================
+        function handleSinglePhotoFile(event, index) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                photos[index] = e.target.result;
+                photoRotations[index] = 0;
+                renderSingleSlot(index);
+                showToast(`Foto ${index + 1} berjaya dimuatkan.`);
+                event.target.value = '';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderSingleSlot(index) {
+            const img = document.getElementById(`photo-img-${index}`);
+            const empty = document.getElementById(`photo-empty-${index}`);
+            if (!img || !empty) return;
+
+            if (photos[index]) {
+                img.src = photos[index];
+                img.style.transform = `rotate(${photoRotations[index]}deg)`;
+                img.classList.remove('hidden');
+                img.style.display = 'block';
+                empty.classList.add('hidden');
+            } else {
+                img.src = '';
+                img.classList.add('hidden');
+                img.style.display = 'none';
+                empty.classList.remove('hidden');
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function rotateSinglePhoto(event, index) {
+            event.stopPropagation();
+            if (!photos[index]) {
+                showToast(`Sila ambil Foto ${index + 1} dahulu.`);
+                return;
+            }
+            photoRotations[index] = (photoRotations[index] + 90) % 360;
+            renderSingleSlot(index);
+            showToast(`Foto ${index + 1} dipusingkan ke ${photoRotations[index]}°`);
+        }
+
+        function removeSinglePhoto(event, index) {
+            event.stopPropagation();
+            photos[index] = null;
+            photoRotations[index] = 0;
+            renderSingleSlot(index);
+            showToast(`Foto ${index + 1} dipadam.`);
+        }
+
+        function autoRotateAllPhotos(pageNumber) {
+            let startIdx = pageNumber === 2 ? 0 : 4;
+            let endIdx = pageNumber === 2 ? 4 : 8;
+            let count = 0;
+            for (let i = startIdx; i < endIdx; i++) {
+                if (photos[i]) {
+                    photoRotations[i] = (photoRotations[i] + 90) % 360;
+                    renderSingleSlot(i);
+                    count++;
+                }
+            }
+            if (count > 0) showToast(`Semua foto M/S ${pageNumber} telah dipusingkan.`);
+            else showToast(`Tiada foto pada M/S ${pageNumber} untuk dipusingkan.`);
+        }
+
+        // =========================================================================
+        // 10. PENGURUSAN FOLDER & FAIL
+        // =========================================================================
+        function updateSavedBadge() {
+            const badge = document.getElementById('savedCountBadge');
+            if (badge) badge.innerText = savedDocuments.length;
+        }
+
+        function toggleHistoryDrawer() {
+            const drawer = document.getElementById('historyDrawerModal');
+            if (!drawer) return;
+            if (drawer.classList.contains('hidden')) {
+                renderSavedDocsList();
+                drawer.classList.remove('hidden');
+                drawer.classList.add('flex');
+            } else {
+                drawer.classList.add('hidden');
+                drawer.classList.remove('flex');
+            }
+        }
+
+        async function createNewFolderPrompt() {
+            const folderName = prompt("Masukkan nama folder baru:");
+            if (!folderName || folderName.trim() === "") return;
+
+            const newFolder = {
+                id: 'fld_' + Date.now(),
+                name: folderName.trim(),
+                parentId: currentFolderId,
+                timestamp: Date.now()
+            };
+
+            savedFolders.push(newFolder);
+            await persistFolderToDB(newFolder);
+            renderSavedDocsList();
+            showToast(`Folder "${newFolder.name}" berjaya dicipta.`);
+        }
+
+        function openFolder(folderId) {
+            currentFolderId = folderId;
+            renderSavedDocsList();
+        }
+
+        function navigateToBreadcrumb(targetFolderId) {
+            currentFolderId = targetFolderId;
+            renderSavedDocsList();
+        }
+
+        async function deleteFolder(event, folderId) {
+            event.stopPropagation();
+            const folder = savedFolders.find(f => f.id === folderId);
+            if (!folder) return;
+
+            const childFolders = savedFolders.filter(f => f.parentId === folderId);
+            const childDocs = savedDocuments.filter(d => d.folderId === folderId);
+
+            if (childFolders.length > 0 || childDocs.length > 0) {
+                const ok = confirm(`Folder "${folder.name}" mengandungi ${childDocs.length} dokumen dan ${childFolders.length} sub-folder. Padam semua kandungan?`);
+                if (!ok) return;
+            }
+
+            async function recursiveDelete(fId) {
+                const subF = savedFolders.filter(f => f.parentId === fId);
+                for (const sf of subF) {
+                    await recursiveDelete(sf.id);
+                }
+                const docs = savedDocuments.filter(d => d.folderId === fId);
+                for (const dc of docs) {
+                    await removeDocumentFromDB(dc.id);
+                    const idx = savedDocuments.findIndex(x => x.id === dc.id);
+                    if (idx !== -1) savedDocuments.splice(idx, 1);
+                }
+                await removeFolderFromDB(fId);
+                const fIdx = savedFolders.findIndex(f => f.id === fId);
+                if (fIdx !== -1) savedFolders.splice(fIdx, 1);
+            }
+
+            await recursiveDelete(folderId);
+            updateSavedBadge();
+            renderSavedDocsList();
+            showToast(`Folder "${folder.name}" dipadam.`);
+        }
+
+        function renderBreadcrumb() {
+            const container = document.getElementById('folderBreadcrumb');
+            const actionContainer = document.getElementById('currentFolderAction');
+            if (!container) return;
+
+            const path = [];
+            let curr = currentFolderId;
+            while (curr) {
+                const f = savedFolders.find(x => x.id === curr);
+                if (f) {
+                    path.unshift(f);
+                    curr = f.parentId;
+                } else break;
+            }
+
+            let html = `
+                <button type="button" onclick="navigateToBreadcrumb(null)" class="text-emerald-400 hover:underline flex items-center gap-1 font-bold">
+                    <i data-lucide="home" class="w-3 h-3"></i>
+                    <span>Utama</span>
+                </button>
+            `;
+
+            path.forEach((f, idx) => {
+                const isLast = idx === path.length - 1;
+                html += `
+                    <span class="text-zinc-500">/</span>
+                    <button type="button" onclick="navigateToBreadcrumb('${f.id}')" class="${isLast ? 'text-zinc-200 font-bold' : 'text-emerald-400 hover:underline'}">
+                        ${f.name}
+                    </button>
+                `;
+            });
+
+            container.innerHTML = html;
+
+            if (actionContainer) {
+                if (currentFolderId) {
+                    actionContainer.innerHTML = `
+                        <button type="button" onclick="createNewFolderPrompt()" class="px-2 py-0.5 bg-amber-950/80 border border-amber-600/70 text-amber-300 text-[10px] font-semibold rounded flex items-center gap-1 transition">
+                            <i data-lucide="folder-plus" class="w-3 h-3 text-amber-400"></i>
+                            <span>Sub-Folder</span>
+                        </button>
+                    `;
+                } else {
+                    actionContainer.innerHTML = '';
+                }
+            }
+        }
+
+        function openMoveDocModal(event, docId) {
+            event.stopPropagation();
+            docToMoveId = docId;
+            const modal = document.getElementById('moveDocModal');
+            const list = document.getElementById('folderSelectList');
+            if (!modal || !list) return;
+
+            const doc = savedDocuments.find(d => d.id === docId);
+            if (!doc) return;
+
+            let html = `
+                <div class="p-2.5 border rounded-xl hover:bg-zinc-800 cursor-pointer flex items-center justify-between text-xs font-semibold ${doc.folderId === null ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300' : 'border-zinc-700 text-zinc-300'}" onclick="confirmMoveDoc(null)">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="home" class="w-4 h-4 text-emerald-400"></i>
+                        <span>Folder Utama (Root)</span>
+                    </div>
+                    ${doc.folderId === null ? '<span class="text-[10px] text-emerald-400 font-bold">Semasa</span>' : ''}
+                </div>
+            `;
+
+            savedFolders.forEach(f => {
+                let pName = f.name;
+                let p = f.parentId;
+                while (p) {
+                    const parentFolder = savedFolders.find(x => x.id === p);
+                    if (parentFolder) {
+                        pName = parentFolder.name + ' > ' + pName;
+                        p = parentFolder.parentId;
+                    } else break;
+                }
+
+                const isCurrent = doc.folderId === f.id;
+                html += `
+                    <div class="p-2.5 border rounded-xl hover:bg-zinc-800 cursor-pointer flex items-center justify-between text-xs font-medium ${isCurrent ? 'border-amber-500 bg-amber-950/40 text-amber-300 font-bold' : 'border-zinc-700 text-zinc-300'}" onclick="confirmMoveDoc('${f.id}')">
+                        <div class="flex items-center gap-2 truncate">
+                            <i data-lucide="folder" class="w-4 h-4 text-amber-400 flex-shrink-0"></i>
+                            <span class="truncate">${pName}</span>
+                        </div>
+                        ${isCurrent ? '<span class="text-[10px] text-amber-400 font-bold flex-shrink-0">Semasa</span>' : ''}
+                    </div>
+                `;
+            });
+
+            list.innerHTML = html;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function closeMoveModal() {
+            const modal = document.getElementById('moveDocModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+            docToMoveId = null;
+        }
+
+        async function confirmMoveDoc(targetFolderId) {
+            if (!docToMoveId) return;
+            const doc = savedDocuments.find(d => d.id === docToMoveId);
+            if (doc) {
+                doc.folderId = targetFolderId;
+                await persistDocumentToDB(doc);
+                closeMoveModal();
+                renderSavedDocsList();
+                showToast("Dokumen dialihkan.");
+            }
+        }
+
+        function base64ToBlobData(base64Data) {
+            const parts = base64Data.split(';base64,');
+            const contentType = parts[0].split(':')[1] || 'application/pdf';
+            const raw = window.atob(parts[1]);
+            const rawLength = raw.length;
+            const uInt8Array = new Uint8Array(rawLength);
+            for (let i = 0; i < rawLength; ++i) {
+                uInt8Array[i] = raw.charCodeAt(i);
+            }
+            return new Blob([uInt8Array], { type: contentType });
+        }
+
+        async function shareSavedPdf(event, index) {
+            event.stopPropagation();
+            const doc = savedDocuments[index];
+            if (!doc || !doc.pdfData) {
+                showToast("Fail PDF belum sedia.");
+                return;
+            }
+
+            try {
+                const blob = base64ToBlobData(doc.pdfData);
+                const fileName = `${doc.title}.pdf`;
+                const file = new File([blob], fileName, { type: 'application/pdf' });
+
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        title: doc.title,
+                        text: `Dokumen PDF: ${doc.title} (${doc.date})`,
+                        files: [file]
+                    });
+                    showToast("PDF berjaya dikongsi!");
+                } else {
+                    downloadSavedPdfDirect(index);
+                    showToast("Fail PDF dimuat turun ke storan peranti.");
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    downloadSavedPdfDirect(index);
+                }
+            }
+        }
+
+        function openPdfPreviewModal(index) {
+            const doc = savedDocuments[index];
+            if (!doc || !doc.pdfData) {
+                showToast("Fail PDF tiada.");
+                return;
+            }
+            const blob = base64ToBlobData(doc.pdfData);
+            const blobUrl = URL.createObjectURL(blob);
+            window.open(blobUrl, '_blank');
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+        }
+
+        function downloadSavedPdfDirect(index) {
+            const doc = savedDocuments[index];
+            if (!doc || !doc.pdfData) {
+                showToast("Fail PDF tiada.");
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = doc.pdfData;
+            link.download = `${doc.title}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            showToast("Fail PDF dimuat turun.");
+        }
+
+        function renderSavedDocsList() {
+            const container = document.getElementById('savedDocsListContainer');
+            if (!container) return;
+
+            renderBreadcrumb();
+
+            const currentFolders = savedFolders.filter(f => f.parentId === currentFolderId);
+            const currentDocs = savedDocuments.filter(d => (d.folderId || null) === currentFolderId);
+
+            if (currentFolders.length === 0 && currentDocs.length === 0) {
+                container.innerHTML = `
+                    <div class="py-12 text-center text-zinc-500 text-xs flex flex-col items-center">
+                        <div class="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-400 mb-2">
+                            <i data-lucide="folder-open" class="w-6 h-6"></i>
+                        </div>
+                        <p class="font-medium text-zinc-300">Folder ini kosong</p>
+                        <p class="text-[11px] text-zinc-500 mt-1">Tekan "Simpan PDF" untuk menyimpan dokumen ke sini.</p>
+                    </div>
+                `;
+                if (window.lucide) lucide.createIcons();
+                return;
+            }
+
+            let html = '';
+
+            if (currentFolders.length > 0) {
+                html += `<div class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-1 mb-1">Folder (${currentFolders.length})</div>`;
+                html += currentFolders.map(folder => {
+                    const childDocCount = savedDocuments.filter(d => d.folderId === folder.id).length;
+                    const subFolderCount = savedFolders.filter(f => f.parentId === folder.id).length;
+                    return `
+                        <div class="p-2.5 bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/60 rounded-xl flex items-center justify-between transition cursor-pointer mb-1.5" onclick="openFolder('${folder.id}')">
+                            <div class="flex items-center gap-2.5 min-w-0 pr-2">
+                                <div class="w-9 h-9 rounded-lg bg-amber-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                                    <i data-lucide="folder" class="w-5 h-5"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h4 class="text-xs font-bold text-white truncate">${folder.name}</h4>
+                                    <p class="text-[10px] text-zinc-400 mt-0.5 truncate">
+                                        ${childDocCount} PDF • ${subFolderCount} Sub-Folder
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 flex-shrink-0" onclick="event.stopPropagation()">
+                                <button type="button" onclick="openFolder('${folder.id}')" title="Buka Folder" class="p-1.5 bg-amber-950/80 border border-amber-600/70 text-amber-300 rounded-lg text-xs font-semibold flex items-center gap-1 transition">
+                                    <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
+                                    <span>Buka</span>
+                                </button>
+                                <button type="button" onclick="deleteFolder(event, '${folder.id}')" title="Padam Folder" class="p-1.5 bg-red-950/60 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            if (currentDocs.length > 0) {
+                html += `<div class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-1 mt-3 mb-1">Dokumen PDF (${currentDocs.length})</div>`;
+                html += currentDocs.map(doc => {
+                    const idx = savedDocuments.findIndex(d => d.id === doc.id);
+                    const countPhotos = (doc.photosList || []).filter(p => p !== null).length;
+                    const hasDoc = !!doc.docImg;
+                    const isCurrent = doc.title === currentDocTitle;
+                    const hasPdf = !!doc.pdfData;
+                    const sizeDisplay = doc.pdfSize ? ` • ${doc.pdfSize}` : '';
+
+                    return `
+                        <div class="p-3 bg-zinc-800/80 hover:bg-zinc-800 border ${isCurrent ? 'border-emerald-500' : 'border-zinc-700/60'} rounded-xl flex items-center justify-between transition cursor-pointer mb-2" onclick="loadSavedDocument(${idx})">
+                            <div class="flex items-center gap-3 min-w-0 pr-2">
+                                <div class="w-11 h-14 rounded-lg bg-zinc-950 overflow-hidden flex items-center justify-center text-emerald-400 font-bold border border-zinc-700 flex-shrink-0 relative shadow-sm">
+                                    ${hasDoc ? `<img src="${doc.docImg}" class="w-full h-full object-cover">` : `<i data-lucide="file-text" class="w-5 h-5 text-zinc-500"></i>`}
+                                    <span class="absolute bottom-0 inset-x-0 bg-red-600 text-[8px] text-white text-center font-bold uppercase tracking-tight py-0.2">PDF</span>
+                                </div>
+                                <div class="min-w-0">
+                                    <h4 class="text-xs font-bold text-white flex items-center gap-1.5 truncate">
+                                        <span class="truncate">${doc.title}</span>
+                                        ${isCurrent ? '<span class="text-[9px] bg-emerald-600 text-white px-1.5 py-0.2 rounded-full flex-shrink-0">Aktif</span>' : ''}
+                                    </h4>
+                                    <p class="text-[10px] text-zinc-400 mt-0.5 truncate">
+                                        ${doc.date}${sizeDisplay} • ${hasDoc ? 'M/S 1 Ada' : 'Tiada'} • ${countPhotos}/8 Foto
+                                    </p>
+                                    <div class="text-[9px] ${hasPdf ? 'text-emerald-400' : 'text-amber-400'} font-semibold flex items-center gap-1 mt-0.5">
+                                        <i data-lucide="${hasPdf ? 'check-circle-2' : 'clock'}" class="w-2.5 h-2.5"></i>
+                                        <span>${hasPdf ? 'Tersimpan Sebagai PDF (' + (doc.pdfSize || 'Siap') + ')' : 'Draf Dokumen'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 flex-shrink-0" onclick="event.stopPropagation()">
+                                ${hasPdf ? `
+                                    <button type="button" onclick="shareSavedPdf(event, ${idx})" title="Kongsi Fail PDF" class="p-1.5 bg-emerald-950/80 border border-emerald-600/70 text-emerald-300 hover:bg-emerald-600 hover:text-white rounded-lg transition active:scale-95 shadow-sm">
+                                        <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button type="button" onclick="openPdfPreviewModal(${idx})" title="Lihat PDF" class="px-2 py-1.5 bg-red-950/80 border border-red-600/70 text-red-300 hover:bg-red-600 hover:text-white rounded-lg text-xs font-bold transition flex items-center gap-1">
+                                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                        <span>Lihat</span>
+                                    </button>
+                                    <button type="button" onclick="downloadSavedPdfDirect(${idx})" title="Muat Turun PDF" class="p-1.5 bg-zinc-700 text-zinc-200 hover:bg-emerald-600 hover:text-white rounded-lg transition">
+                                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                ` : ''}
+                                <button type="button" onclick="openMoveDocModal(event, '${doc.id}')" title="Alih Dokumen" class="p-1.5 bg-amber-950/80 border border-amber-600/70 text-amber-300 hover:bg-amber-600 hover:text-white rounded-lg text-xs font-medium transition">
+                                    <i data-lucide="folder-input" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button type="button" onclick="compressSingleDocumentToZip(${idx})" title="Mampat ke ZIP" class="p-1.5 bg-indigo-950/80 border border-indigo-600/70 text-indigo-300 hover:bg-indigo-600 hover:text-white rounded-lg text-xs font-medium transition">
+                                    <i data-lucide="archive" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button type="button" onclick="deleteSavedDocument(event, ${idx})" title="Padam" class="p-1.5 bg-red-950/60 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            container.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function loadSavedDocument(index) {
+            const doc = savedDocuments[index];
+            if (!doc) return;
+
+            currentDocTitle = doc.title;
+            const titleEl = document.getElementById('docTitleLabel');
+            if (titleEl) titleEl.innerText = currentDocTitle;
+
+            originalRawDocSrc = doc.docRaw;
+            uncroppedOriginalSrc = doc.docRaw;
+            docImageSrc = doc.docImg;
+            docRotation = doc.docRot || 0;
+            docFilter = doc.docFilt || 'magic';
+            setDocFilter(docFilter);
+
+            photos = [null, null, null, null, null, null, null, null];
+            photoRotations = [0, 0, 0, 0, 0, 0, 0, 0];
+            if (doc.photosList && Array.isArray(doc.photosList)) {
+                for (let i = 0; i < doc.photosList.length && i < 8; i++) {
+                    photos[i] = doc.photosList[i];
+                }
+            }
+            if (doc.photoRots && Array.isArray(doc.photoRots)) {
+                for (let i = 0; i < doc.photoRots.length && i < 8; i++) {
+                    photoRotations[i] = doc.photoRots[i];
+                }
+            }
+
+            renderDocUI();
+            for (let i = 0; i < 8; i++) {
+                renderSingleSlot(i);
+            }
+
+            toggleHistoryDrawer();
+            showToast(`Memuatkan: ${currentDocTitle}`);
+        }
+
+        async function deleteSavedDocument(event, index) {
+            event.stopPropagation();
+            const target = savedDocuments[index];
+            if (!target) return;
+            await removeDocumentFromDB(target.id);
+            savedDocuments.splice(index, 1);
+            updateSavedBadge();
+            renderSavedDocsList();
+            showToast(`Dokumen dipadam.`);
+        }
+
+        function createNewEmptyDocument() {
+            currentDocTitle = "Dokumen_Imbasan_" + (savedDocuments.length + 1);
+            const titleEl = document.getElementById('docTitleLabel');
+            if (titleEl) titleEl.innerText = currentDocTitle;
+
+            originalRawDocSrc = null;
+            uncroppedOriginalSrc = null;
+            docImageSrc = null;
+            docRotation = 0;
+            docFilter = 'magic';
+            setDocFilter('magic');
+
+            photos = [null, null, null, null, null, null, null, null];
+            photoRotations = [0, 0, 0, 0, 0, 0, 0, 0];
+
+            renderDocUI();
+            for (let i = 0; i < 8; i++) {
+                renderSingleSlot(i);
+            }
+
+            toggleHistoryDrawer();
+            showToast("Dokumen baru sedia.");
+        }
+
+        function renameDocument() {
+            const titleEl = document.getElementById('docTitleLabel');
+            const current = currentDocTitle || "Dokumen_Imbasan_1";
+            const input = prompt("Masukkan nama fail dokumen:", current);
+            if (input && input.trim() !== '') {
+                currentDocTitle = input.trim().replace(/\s+/g, '_');
+                if (titleEl) titleEl.innerText = currentDocTitle;
+                showToast("Nama dokumen dikemas kini.");
+            }
+        }
+
+        // =========================================================================
+        // 11. PENJANAAN PDF DENGAN LOGIK BERSYARAT M/S 3
+        // =========================================================================
+        function getImageDimensions(src) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve({ width: img.width || 1240, height: img.height || 1754 });
+                img.onerror = () => resolve({ width: 1240, height: 1754 });
+                img.src = src;
+            });
+        }
+
+        async function saveAndGeneratePDF(showDrawerAfterSave = true) {
+            if (!docImageSrc && photos.every(p => p === null)) {
+                showToast("Sila masukkan dokumen atau foto dahulu.");
+                return;
+            }
+
+            const loading = document.getElementById('loadingModal');
+            const progressDesc = document.getElementById('pdfProgressDesc');
+            if (loading) {
+                loading.classList.remove('hidden');
+                loading.classList.add('flex');
+            }
+
+            try {
+                const hasPage3Photos = photos.slice(4, 8).some(p => p !== null);
+                const totalPdfPages = hasPage3Photos ? 3 : 2;
+
+                if (progressDesc) {
+                    progressDesc.innerText = `Menjana ${totalPdfPages} halaman PDF standard A4...`;
+                }
+
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4',
+                    compress: true
+                });
+
+                const pageWidth = 210;
+                const pageHeight = 297;
+                const margin = 12;
+
+                // ==========================================
+                // MUKA SURAT 1: DOKUMEN A4 UTAMA
+                // ==========================================
+                if (docImageSrc) {
+                    pdf.addImage(docImageSrc, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+                    pdf.setFont("helvetica", "normal");
+                    pdf.setFontSize(7.5);
+                    pdf.setTextColor(140);
+                    pdf.text(`Halaman 1 / ${totalPdfPages} • A4 Scanner Pro`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+                } else {
+                    pdf.setFont("helvetica", "normal");
+                    pdf.setFontSize(11);
+                    pdf.setTextColor(140);
+                    pdf.text("[ Tiada Dokumen Kertas Diimbas untuk Halaman 1 ]", pageWidth / 2, pageHeight / 2, { align: 'center' });
+                }
+
+                // ==========================================
+                // MUKA SURAT 2: 4 FOTO LAMPIRAN (FOTO 1-4)
+                // ==========================================
+                pdf.addPage('a4', 'portrait');
+
+                pdf.setFont("helvetica", "bold");
+                pdf.setFontSize(11);
+                pdf.setTextColor(30, 41, 59);
+                pdf.text("LAMPIRAN BERGAMBAR (BAHAGIAN 1)", margin, 18);
+
+                pdf.setFont("helvetica", "normal");
+                pdf.setFontSize(8);
+                pdf.setTextColor(120);
+                pdf.text(`Tarikh Dokumen: ${currentDateStr}`, pageWidth - margin, 18, { align: 'right' });
+
+                pdf.setDrawColor(210, 215, 220);
+                pdf.setLineWidth(0.3);
+                pdf.line(margin, 21, pageWidth - margin, 21);
+
+                const startX = margin;
+                const startY = 27;
+                const gap = 8;
+                const cellW = (pageWidth - (margin * 2) - gap) / 2;
+                const cellH = (pageHeight - startY - margin - gap - 8) / 2;
+
+                const gridCoordsPage2 = [
+                    { x: startX, y: startY, label: "Foto 1", index: 0 },
+                    { x: startX + cellW + gap, y: startY, label: "Foto 2", index: 1 },
+                    { x: startX, y: startY + cellH + gap, label: "Foto 3", index: 2 },
+                    { x: startX + cellW + gap, y: startY + cellH + gap, label: "Foto 4", index: 3 }
+                ];
+
+                for (let i = 0; i < 4; i++) {
+                    const coord = gridCoordsPage2[i];
+                    pdf.setDrawColor(226, 232, 240);
+                    pdf.setFillColor(250, 250, 250);
+                    pdf.roundedRect(coord.x, coord.y, cellW, cellH, 2.5, 2.5, 'FD');
+
+                    const photoData = photos[coord.index];
+                    if (photoData) {
+                        try {
+                            const readyPhotoUrl = await applyTransformationCanvas(photoData, photoRotations[coord.index] || 0, 'normal');
+                            const pDim = await getImageDimensions(readyPhotoUrl);
+
+                            const padding = 2.5;
+                            const availW = cellW - (padding * 2);
+                            const availH = cellH - (padding * 2) - 6;
+
+                            const scale = Math.min(availW / (pDim.width || 1), availH / (pDim.height || 1));
+                            const drawW = pDim.width * scale;
+                            const drawH = pDim.height * scale;
+
+                            const placeX = coord.x + (cellW - drawW) / 2;
+                            const placeY = coord.y + padding + (availH - drawH) / 2;
+
+                            pdf.addImage(readyPhotoUrl, 'JPEG', placeX, placeY, drawW, drawH, undefined, 'FAST');
+                            pdf.setFont("helvetica", "normal");
+                            pdf.setFontSize(8);
+                            pdf.setTextColor(110);
+                            pdf.text(coord.label, coord.x + (cellW / 2), coord.y + cellH - 3, { align: 'center' });
+                        } catch (errRender) {
+                            try {
+                                pdf.addImage(photoData, 'JPEG', coord.x + 2, coord.y + 2, cellW - 4, cellH - 10, undefined, 'FAST');
+                                pdf.setFontSize(8);
+                                pdf.setTextColor(110);
+                                pdf.text(coord.label, coord.x + (cellW / 2), coord.y + cellH - 3, { align: 'center' });
+                            } catch (eFallback) {
+                                pdf.setFontSize(8);
+                                pdf.setTextColor(180);
+                                pdf.text(`[ Ralat ${coord.label} ]`, coord.x + (cellW / 2), coord.y + (cellH / 2), { align: 'center' });
+                            }
+                        }
+                    } else {
+                        pdf.setFont("helvetica", "normal");
+                        pdf.setFontSize(9);
+                        pdf.setTextColor(170);
+                        pdf.text(`[ ${coord.label} - Kosong ]`, coord.x + (cellW / 2), coord.y + (cellH / 2), { align: 'center' });
+                    }
+                }
+
+                pdf.setFontSize(7.5);
+                pdf.setTextColor(150);
+                pdf.text(`Halaman 2 / ${totalPdfPages} • A4 Scanner Pro`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+
+                // ==========================================
+                // MUKA SURAT 3: JANA HANYA JIKA ADA GAMBAR (FOTO 5-8)
+                // ==========================================
+                if (hasPage3Photos) {
+                    pdf.addPage('a4', 'portrait');
+
+                    pdf.setFont("helvetica", "bold");
+                    pdf.setFontSize(11);
+                    pdf.setTextColor(30, 41, 59);
+                    pdf.text("LAMPIRAN BERGAMBAR (BAHAGIAN 2)", margin, 18);
+
+                    pdf.setFont("helvetica", "normal");
+                    pdf.setFontSize(8);
+                    pdf.setTextColor(120);
+                    pdf.text(`Tarikh Dokumen: ${currentDateStr}`, pageWidth - margin, 18, { align: 'right' });
+
+                    pdf.setDrawColor(210, 215, 220);
+                    pdf.setLineWidth(0.3);
+                    pdf.line(margin, 21, pageWidth - margin, 21);
+
+                    const gridCoordsPage3 = [
+                        { x: startX, y: startY, label: "Foto 5", index: 4 },
+                        { x: startX + cellW + gap, y: startY, label: "Foto 6", index: 5 },
+                        { x: startX, y: startY + cellH + gap, label: "Foto 7", index: 6 },
+                        { x: startX + cellW + gap, y: startY + cellH + gap, label: "Foto 8", index: 7 }
+                    ];
+
+                    for (let i = 0; i < 4; i++) {
+                        const coord = gridCoordsPage3[i];
+                        pdf.setDrawColor(226, 232, 240);
+                        pdf.setFillColor(250, 250, 250);
+                        pdf.roundedRect(coord.x, coord.y, cellW, cellH, 2.5, 2.5, 'FD');
+
+                        const photoData = photos[coord.index];
+                        if (photoData) {
+                            try {
+                                const readyPhotoUrl = await applyTransformationCanvas(photoData, photoRotations[coord.index] || 0, 'normal');
+                                const pDim = await getImageDimensions(readyPhotoUrl);
+
+                                const padding = 2.5;
+                                const availW = cellW - (padding * 2);
+                                const availH = cellH - (padding * 2) - 6;
+
+                                const scale = Math.min(availW / (pDim.width || 1), availH / (pDim.height || 1));
+                                const drawW = pDim.width * scale;
+                                const drawH = pDim.height * scale;
+
+                                const placeX = coord.x + (cellW - drawW) / 2;
+                                const placeY = coord.y + padding + (availH - drawH) / 2;
+
+                                pdf.addImage(readyPhotoUrl, 'JPEG', placeX, placeY, drawW, drawH, undefined, 'FAST');
+                                pdf.setFont("helvetica", "normal");
+                                pdf.setFontSize(8);
+                                pdf.setTextColor(110);
+                                pdf.text(coord.label, coord.x + (cellW / 2), coord.y + cellH - 3, { align: 'center' });
+                            } catch (errRender) {
+                                try {
+                                    pdf.addImage(photoData, 'JPEG', coord.x + 2, coord.y + 2, cellW - 4, cellH - 10, undefined, 'FAST');
+                                    pdf.setFontSize(8);
+                                    pdf.setTextColor(110);
+                                    pdf.text(coord.label, coord.x + (cellW / 2), coord.y + cellH - 3, { align: 'center' });
+                                } catch (eFallback) {
+                                    pdf.setFontSize(8);
+                                    pdf.setTextColor(180);
+                                    pdf.text(`[ Ralat ${coord.label} ]`, coord.x + (cellW / 2), coord.y + (cellH / 2), { align: 'center' });
+                                }
+                            }
+                        } else {
+                            pdf.setFont("helvetica", "normal");
+                            pdf.setFontSize(9);
+                            pdf.setTextColor(170);
+                            pdf.text(`[ ${coord.label} - Kosong ]`, coord.x + (cellW / 2), coord.y + (cellH / 2), { align: 'center' });
+                        }
+                    }
+
+                    pdf.setFontSize(7.5);
+                    pdf.setTextColor(150);
+                    pdf.text(`Halaman 3 / 3 • A4 Scanner Pro`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+                }
+
+                // ==========================================
+                // OUTPUT & PERSIST KE DATABASE
+                // ==========================================
+                const pdfDataUri = pdf.output('datauristring');
+                const pdfBlob = pdf.output('blob');
+                const sizeKb = Math.round(pdfBlob.size / 1024);
+                const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+
+                const existingIndex = savedDocuments.findIndex(d => d.title === currentDocTitle);
+                const existingDoc = existingIndex !== -1 ? savedDocuments[existingIndex] : null;
+
+                const docObj = {
+                    id: existingDoc ? existingDoc.id : 'doc_' + Date.now(),
+                    timestamp: Date.now(),
+                    title: currentDocTitle,
+                    date: currentDateStr,
+                    folderId: existingDoc ? (existingDoc.folderId ?? currentFolderId) : currentFolderId,
+                    docRaw: originalRawDocSrc,
+                    docImg: docImageSrc,
+                    docRot: docRotation,
+                    docFilt: docFilter,
+                    photosList: [...photos],
+                    photoRots: [...photoRotations],
+                    pdfData: pdfDataUri,
+                    pdfSize: sizeStr
+                };
+
+                if (existingIndex !== -1) {
+                    savedDocuments[existingIndex] = docObj;
+                } else {
+                    savedDocuments.unshift(docObj);
+                }
+
+                await persistDocumentToDB(docObj);
+                updateSavedBadge();
+                renderSavedDocsList();
+
+                pdf.save(`${currentDocTitle}.pdf`);
+                showToast(`PDF (${totalPdfPages} Halaman) berjaya disimpan!`);
+
+                if (showDrawerAfterSave) {
+                    const drawer = document.getElementById('historyDrawerModal');
+                    if (drawer && drawer.classList.contains('hidden')) {
+                        toggleHistoryDrawer();
+                    }
+                }
+            } catch (err) {
+                console.error("Ralat simpan PDF:", err);
+                showToast("Gagal menjana PDF. Sila cuba lagi.");
+            } finally {
+                if (loading) {
+                    loading.classList.add('hidden');
+                    loading.classList.remove('flex');
+                }
+            }
+        }
+
+        async function compressSingleDocumentToZip(index) {
+            const doc = savedDocuments[index];
+            if (!doc) return;
+
+            showToast(`Sedang memampatkan ${doc.title} ke fail ZIP...`);
+            try {
+                const zip = new JSZip();
+                const folder = zip.folder(doc.title);
+
+                if (doc.pdfData) {
+                    const pdfBlob = base64ToBlobData(doc.pdfData);
+                    folder.file(`${doc.title}.pdf`, pdfBlob);
+                }
+
+                if (doc.docImg) {
+                    const docBlob = base64ToBlobData(doc.docImg);
+                    folder.file(`Halaman_1_Dokumen.jpg`, docBlob);
+                }
+
+                for (let i = 0; i < (doc.photosList || []).length; i++) {
+                    if (doc.photosList[i]) {
+                        const readyPhotoUrl = await applyTransformationCanvas(doc.photosList[i], (doc.photoRots || [])[i] || 0, 'normal');
+                        const pBlob = base64ToBlobData(readyPhotoUrl);
+                        const pageNum = i < 4 ? 2 : 3;
+                        folder.file(`Halaman_${pageNum}_Foto_${i + 1}.jpg`, pBlob);
+                    }
+                }
+
+                const content = await zip.generateAsync({ type: "blob" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(content);
+                link.download = `${doc.title}.zip`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                showToast(`Fail ZIP ${doc.title} siap dimuat turun!`);
+            } catch (err) {
+                console.error("Ralat mampatan ZIP:", err);
+                showToast("Gagal memampat ke ZIP.");
+            }
+        }
+
+        async function compressAllToZip() {
+            if (savedDocuments.length === 0) {
+                showToast("Tiada dokumen untuk dimampatkan.");
+                return;
+            }
+
+            showToast("Sedang memampatkan semua dokumen ke fail ZIP...");
+            try {
+                const zip = new JSZip();
+                const rootFolder = zip.folder("Semua_Dokumen_Imbasan");
+
+                for (const doc of savedDocuments) {
+                    const docFolder = rootFolder.folder(doc.title);
+                    if (doc.pdfData) {
+                        const pdfBlob = base64ToBlobData(doc.pdfData);
+                        docFolder.file(`${doc.title}.pdf`, pdfBlob);
+                    }
+                    if (doc.docImg) {
+                        const docBlob = base64ToBlobData(doc.docImg);
+                        docFolder.file(`Halaman_1_Dokumen.jpg`, docBlob);
+                    }
+                }
+
+                const content = await zip.generateAsync({ type: "blob" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(content);
+                link.download = `Koleksi_Dokumen_${Date.now()}.zip`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                showToast("Fail ZIP semua dokumen siap dimuat turun!");
+            } catch (err) {
+                console.error("Ralat ZIP koleksi:", err);
+                showToast("Gagal memampat semua dokumen.");
+            }
+        }
+
+        // =========================================================================
+        // 12. KAWALAN PENGGUNA (PAGE SWITCHER M/S 1, 2, 3)
+        // =========================================================================
+        function switchPage(pageNumber) {
+            currentActivePage = pageNumber;
+            const p1 = document.getElementById('pageView1');
+            const p2 = document.getElementById('pageView2');
+            const p3 = document.getElementById('pageView3');
+            const tab1 = document.getElementById('tabBtn1');
+            const tab2 = document.getElementById('tabBtn2');
+            const tab3 = document.getElementById('tabBtn3');
+            const scanLabel = document.getElementById('bottomScanBtnLabel');
+
+            if (pageNumber === 1) {
+                if (p1) { p1.classList.remove('hidden'); p1.classList.add('flex'); }
+                if (p2) { p2.classList.add('hidden'); p2.classList.remove('flex'); }
+                if (p3) { p3.classList.add('hidden'); p3.classList.remove('flex'); }
+                if (tab1) tab1.className = "flex items-center gap-1 text-white font-bold transition whitespace-nowrap";
+                if (tab2) tab2.className = "flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap";
+                if (tab3) tab3.className = "flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap";
+                if (scanLabel) scanLabel.innerText = "Kamera A4";
+            } else if (pageNumber === 2) {
+                if (p1) { p1.classList.add('hidden'); p1.classList.remove('flex'); }
+                if (p2) { p2.classList.remove('hidden'); p2.classList.add('flex'); }
+                if (p3) { p3.classList.add('hidden'); p3.classList.remove('flex'); }
+                if (tab1) tab1.className = "flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap";
+                if (tab2) tab2.className = "flex items-center gap-1 text-white font-bold transition whitespace-nowrap";
+                if (tab3) tab3.className = "flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap";
+                if (scanLabel) scanLabel.innerText = "Foto M/S 2";
+                for (let i = 0; i < 4; i++) {
+                    renderSingleSlot(i);
+                }
+            } else if (pageNumber === 3) {
+                if (p1) { p1.classList.add('hidden'); p1.classList.remove('flex'); }
+                if (p2) { p2.classList.add('hidden'); p2.classList.remove('flex'); }
+                if (p3) { p3.classList.remove('hidden'); p3.classList.add('flex'); }
+                if (tab1) tab1.className = "flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap";
+                if (tab2) tab2.className = "flex items-center gap-1 text-zinc-400 hover:text-white transition whitespace-nowrap";
+                if (tab3) tab3.className = "flex items-center gap-1 text-white font-bold transition whitespace-nowrap";
+                if (scanLabel) scanLabel.innerText = "Foto M/S 3";
+                for (let i = 4; i < 8; i++) {
+                    renderSingleSlot(i);
+                }
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function triggerPrimaryScanAction() {
+            if (currentActivePage === 1) {
+                openPWACamera(1);
+            } else if (currentActivePage === 2) {
+                let nextSlot = photos.slice(0, 4).findIndex(p => p === null);
+                if (nextSlot === -1) nextSlot = 0;
+                openPWACamera(2, nextSlot);
+            } else if (currentActivePage === 3) {
+                let nextSlotRelative = photos.slice(4, 8).findIndex(p => p === null);
+                let nextSlot = nextSlotRelative === -1 ? 4 : 4 + nextSlotRelative;
+                openPWACamera(3, nextSlot);
+            }
+        }
+
+        function handleGlobalImport(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            if (currentActivePage === 1) {
+                handleDocUpload(event);
+            } else if (currentActivePage === 2) {
+                let slot = photos.slice(0, 4).findIndex(p => p === null);
+                if (slot === -1) slot = 0;
+                handleSinglePhotoFile(event, slot);
+            } else if (currentActivePage === 3) {
+                let slotRel = photos.slice(4, 8).findIndex(p => p === null);
+                let slot = slotRel === -1 ? 4 : 4 + slotRel;
+                handleSinglePhotoFile(event, slot);
+            }
+        }
+
+        let toastTimeout = null;
+        function showToast(text) {
+            const toast = document.getElementById('toastNotification');
+            const toastMsg = document.getElementById('toastMessage');
+            if (!toast || !toastMsg) return;
+
+            toastMsg.innerText = text;
+            toast.classList.remove('-translate-y-24', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('-translate-y-24', 'opacity-0');
+            }, 2500);
+        }
+    </script>
+</body>
+</html>
